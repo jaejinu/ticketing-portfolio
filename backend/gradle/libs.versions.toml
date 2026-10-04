@@ -1,0 +1,97 @@
+# =============================================================================
+# Version Catalog — backend 전역 의존성 버전 단일 소스
+# -----------------------------------------------------------------------------
+# 모든 서브모듈은 build.gradle.kts 에서 libs.* 형태로 이 카탈로그를 참조한다.
+# 한곳에서 버전을 올리면 전 모듈에 일관되게 반영되어 휴먼에러를 막는다.
+#
+# 큰 결정:
+#   - Spring Boot 3.3.x: Java 17 LTS와 호환되는 가장 최신 안정 라인.
+#   - Spring Cloud 2023.0.x: Boot 3.3 매트릭스 (Stream/Sleuth 대신 Micrometer로 이주됨).
+#   - Redisson 3.32.x: Reactive 의존성 없는 Spring Boot 3 starter 사용 → 좌석 분산락 핵심.
+#   - JJWT 0.12.x: 0.11 대비 API가 새로 갈렸으므로 신버전 고정.
+#   - Bucket4j 8.10.x: Redis 백엔드(jcache-redis)로 분산 토큰 버킷 → 채널별 알림 quota·레이트리밋.
+#   - OpenTelemetry starter 2.7: micrometer-tracing 와 함께 OTLP/HTTP 익스포터 자동 구성.
+# =============================================================================
+
+[versions]
+java                    = "17"
+spring-boot             = "3.3.4"
+spring-dependency-mgmt  = "1.1.6"
+spring-cloud            = "2023.0.3"
+redisson                = "3.32.0"
+kafka                   = "3.7.1"          # Boot 3.3 이 가져오는 spring-kafka 와 정합되는 클라이언트 라인
+testcontainers          = "1.21.0"
+jjwt                    = "0.12.6"
+micrometer-tracing      = "1.3.4"
+otel-spring-starter     = "2.7.0"
+lombok                  = "1.18.34"
+bucket4j                = "8.10.1"
+shedlock                = "5.16.0"        # 스케줄러 분산 락 (leader election 대용 — ADR-0004 갱신 참고)
+jackson-databind-nullable = "0.2.6"        # OpenAPI 생성기/널 표현 호환
+mapstruct               = "1.6.0"
+flyway                  = "10.20.0"        # Boot 3.3 이 동일 라인을 끌어오지만 dialect 모듈은 명시 필요
+
+[libraries]
+# --- Spring Boot starters (버전은 BOM 으로 관리되므로 module 만 명시) -----------------
+spring-boot-starter                 = { module = "org.springframework.boot:spring-boot-starter" }
+spring-boot-starter-web             = { module = "org.springframework.boot:spring-boot-starter-web" }
+spring-boot-starter-webflux         = { module = "org.springframework.boot:spring-boot-starter-webflux" }
+spring-boot-starter-websocket       = { module = "org.springframework.boot:spring-boot-starter-websocket" }
+spring-boot-starter-security        = { module = "org.springframework.boot:spring-boot-starter-security" }
+spring-boot-starter-validation      = { module = "org.springframework.boot:spring-boot-starter-validation" }
+spring-boot-starter-data-jpa        = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }
+spring-boot-starter-data-redis      = { module = "org.springframework.boot:spring-boot-starter-data-redis" }
+spring-boot-starter-actuator        = { module = "org.springframework.boot:spring-boot-starter-actuator" }
+spring-boot-starter-mail            = { module = "org.springframework.boot:spring-boot-starter-mail" }
+spring-boot-starter-test            = { module = "org.springframework.boot:spring-boot-starter-test" }
+spring-boot-configuration-processor = { module = "org.springframework.boot:spring-boot-configuration-processor" }
+
+# --- Spring Kafka ------------------------------------------------------------
+spring-kafka                        = { module = "org.springframework.kafka:spring-kafka" }
+spring-kafka-test                   = { module = "org.springframework.kafka:spring-kafka-test" }
+kafka-streams                       = { module = "org.apache.kafka:kafka-streams", version.ref = "kafka" }
+
+# --- DB / Migration ----------------------------------------------------------
+postgresql                          = { module = "org.postgresql:postgresql" }
+flyway-core                         = { module = "org.flywaydb:flyway-core" }
+flyway-postgresql                   = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
+
+# --- Redis / Lock / RateLimit ------------------------------------------------
+redisson-spring-boot                = { module = "org.redisson:redisson-spring-boot-starter", version.ref = "redisson" }
+shedlock-spring                     = { module = "net.javacrumbs.shedlock:shedlock-spring", version.ref = "shedlock" }
+shedlock-provider-redis-spring      = { module = "net.javacrumbs.shedlock:shedlock-provider-redis-spring", version.ref = "shedlock" }
+bucket4j-core                       = { module = "com.bucket4j:bucket4j-core", version.ref = "bucket4j" }
+bucket4j-redis                      = { module = "com.bucket4j:bucket4j-redis", version.ref = "bucket4j" }
+
+# --- 인증/JWT ------------------------------------------------------------------
+jjwt-api                            = { module = "io.jsonwebtoken:jjwt-api",     version.ref = "jjwt" }
+jjwt-impl                           = { module = "io.jsonwebtoken:jjwt-impl",    version.ref = "jjwt" }
+jjwt-jackson                        = { module = "io.jsonwebtoken:jjwt-jackson", version.ref = "jjwt" }
+
+# --- 관측성 -------------------------------------------------------------------
+micrometer-tracing-bridge-otel      = { module = "io.micrometer:micrometer-tracing-bridge-otel" }
+micrometer-registry-otlp            = { module = "io.micrometer:micrometer-registry-otlp" }
+opentelemetry-spring-starter        = { module = "io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter", version.ref = "otel-spring-starter" }
+
+# --- Lombok / Mapstruct ------------------------------------------------------
+lombok                              = { module = "org.projectlombok:lombok",              version.ref = "lombok" }
+mapstruct                           = { module = "org.mapstruct:mapstruct",                version.ref = "mapstruct" }
+mapstruct-processor                 = { module = "org.mapstruct:mapstruct-processor",      version.ref = "mapstruct" }
+
+# --- Testcontainers ----------------------------------------------------------
+testcontainers-bom                  = { module = "org.testcontainers:testcontainers-bom", version.ref = "testcontainers" }
+testcontainers-junit                = { module = "org.testcontainers:junit-jupiter",       version.ref = "testcontainers" }
+testcontainers-postgresql           = { module = "org.testcontainers:postgresql",          version.ref = "testcontainers" }
+testcontainers-redis                = { module = "org.testcontainers:redis",               version.ref = "testcontainers" }
+testcontainers-kafka                = { module = "org.testcontainers:kafka",               version.ref = "testcontainers" }
+
+# --- 기타 ---------------------------------------------------------------------
+jackson-databind-nullable           = { module = "org.openapitools:jackson-databind-nullable", version.ref = "jackson-databind-nullable" }
+
+# Caffeine — in-memory TTL 캐시 (ws-bridge 의 멱등 dedup, alert 의 rate limit 캐시 등)
+# 버전은 Spring Boot BOM 이 관리.
+caffeine                            = { module = "com.github.ben-manes.caffeine:caffeine" }
+
+[plugins]
+spring-boot                 = { id = "org.springframework.boot",                    version.ref = "spring-boot" }
+spring-dependency-management = { id = "io.spring.dependency-management",            version.ref = "spring-dependency-mgmt" }

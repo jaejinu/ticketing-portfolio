@@ -1,0 +1,113 @@
+/* .action aliases keep existing navigation links on the same contract as Button. */
+:where(.ui-button, .action) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-12);
+  min-height: var(--size-target);
+  padding: var(--space-12) var(--space-24);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+  font-size: var(--font-size-control);
+  font-weight: 500;
+  line-height: 1.5;
+  text-align: center;
+  text-decoration: none;
+  transition: background var(--duration-control);
+}
+:where(.ui-button, .action):not(:disabled):hover {
+  background: var(--color-art);
+}
+:where(.ui-button[data-variant="outline"], .action-secondary) {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  border-color: var(--color-border);
+}
+:where(.ui-button[data-variant="ghost"]) {
+  background: transparent;
+  color: var(--color-foreground);
+}
+:where(
+    .ui-button[data-variant="outline"],
+    .ui-button[data-variant="ghost"],
+    .action-secondary
+  ):not(:disabled):hover {
+  background: var(--color-muted);
+}
+:where(.ui-button[data-variant="destructive"]) {
+  background: var(--color-destructive);
+  color: var(--color-destructive-foreground);
+}
+:where(.ui-button[data-size="sm"]) {
+  min-height: var(--size-target-sm);
+  padding: var(--space-8) var(--space-12);
+  font-size: 14px;
+}
+:where(.ui-button[data-size="lg"]) {
+  min-height: var(--size-target-lg);
+  font-size: 16px;
+}
+:where(.ui-button, .action, .ui-control):focus-visible {
+  outline: var(--focus-width) solid var(--color-ring);
+  outline-offset: var(--focus-offset);
+}
+:where(.ui-button, .ui-control):disabled {
+  cursor: not-allowed;
+  opacity: var(--opacity-disabled);
+}
+:where(.ui-control) {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--size-target);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-input);
+  color: var(--color-foreground);
+  padding: var(--space-12) var(--space-16);
+  font-size: var(--font-size-control);
+  line-height: 1.5;
+}
+:where(select.ui-control) {
+  padding-right: var(--space-32);
+}
+.ui-control::placeholder {
+  color: var(--color-muted-foreground);
+}
+.ui-control[aria-invalid="true"] {
+  border-color: var(--color-destructive);
+}
+.ui-field {
+  display: grid;
+  gap: var(--space-8);
+  min-width: 0;
+}
+.ui-field-label {
+  font-size: var(--font-size-label);
+  font-weight: 500;
+}
+.ui-field-hint,
+.ui-field-error {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.ui-field-hint {
+  color: var(--color-muted-foreground);
+}
+.ui-field-error {
+  color: var(--color-destructive);
+}
+.ui-status {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-muted-foreground);
+}
+.ui-status[data-tone="success"] {
+  color: var(--color-success);
+}
+.ui-status[data-tone="error"],
+.ui-status[data-tone="accent"] {
+  color: var(--color-primary);
+}

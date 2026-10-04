@@ -1,0 +1,45 @@
+/* Hybrid v1: Figma semantic roles, shared by all customer-facing screens. */
+@theme {
+  --color-background: #ffffff;
+  --color-foreground: #0a0a0a;
+  --color-muted: #f7f7f4;
+  --color-muted-foreground: #626362;
+  --color-border: #dddeda;
+  --color-input: #ffffff;
+  --color-ring: #702d3b;
+  --color-primary: #702d3b;
+  --color-primary-foreground: #ffffff;
+  --color-destructive: #702d3b;
+  --color-destructive-foreground: #ffffff;
+  --color-selected: #f4ecee;
+  --color-success: #163b37;
+  --color-destructive-subtle: var(--color-selected);
+  --color-success-subtle: #dce6de;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --font-sans: var(--font-plex), "Apple SD Gothic Neo", sans-serif;
+  --font-display: var(--font-instrument), Georgia, serif;
+}
+:root {
+  --space-4: 4px;
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-24: 24px;
+  --space-32: 32px;
+  --space-48: 48px;
+  --space-64: 64px;
+  --color-art: #163b37;
+  --color-cream: #e6dbc7;
+  --color-held: #ece4d6;
+  --size-target: 48px;
+  --size-target-sm: 44px;
+  --size-target-lg: 52px;
+  --focus-width: 2px;
+  --focus-offset: 4px;
+  --opacity-disabled: 0.5;
+  --duration-control: 150ms;
+  --font-size-control: 15px;
+  --font-size-label: 13px;
+}

@@ -1,0 +1,142 @@
+# =============================================================================
+# application-test.yml — Testcontainers 기반 통합 테스트 프로파일
+# -----------------------------------------------------------------------------
+# 실제 인프라가 없어도 컨테이너로 임시 기동된 PG/Kafka/Redis 를 사용한다.
+# datasource/redis/kafka URL 은 Testcontainers DynamicPropertySource 에서 주입.
+# =============================================================================
+spring:
+  datasource:
+    driver-class-name: org.postgresql.Driver
+
+  # JavaMailSender 빈 자동 등록 — SmtpAlertSender 가 의존. 테스트에선 실제 발송 안 함.
+  mail:
+    host: localhost
+    port: 1025
+
+  # 테스트에선 Flyway 가 항상 깨끗한 DB 에 풀세트 적용해야 빠르다.
+  flyway:
+    enabled: true
+    clean-disabled: false
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+  kafka:
+    consumer:
+      group-id: ticketing-it
+      auto-offset-reset: earliest
+    producer:
+      acks: all
+
+# 테스트는 외부 OTel 없이 동작
+management:
+  tracing:
+    sampling:
+      probability: 0.0
+
+# -----------------------------------------------------------------------------
+# 인증 (module-auth) 테스트 오버라이드
+# -----------------------------------------------------------------------------
+# BCrypt strength 를 낮춰 통합 테스트 속도를 확보(보안 의미는 사라지지만 테스트라 OK).
+# 키는 build 임시 디렉터리 아래 자동 생성하도록 한다.
+app:
+  auth:
+    jwt:
+      private-key-path: build/test-keys/jwt-private.pem
+      public-key-path:  build/test-keys/jwt-public.pem
+      auto-generate-keys: true
+      issuer: ticketing
+      access-token-ttl: PT15M
+      refresh-token-ttl: P14D
+    lock:
+      fail-threshold: 5
+      fail-window:    PT10M
+      duration:       PT5M
+    bcrypt:
+      strength: 4
+    cors:
+      allowed-origins: http://localhost:3000
+
+  # 통합 테스트는 빈 DB 에서 시작 — show 시드 비활성.
+  show:
+    seed:
+      enabled: false
+
+  # ---------------------------------------------------------------------------
+  # module-seat 테스트 오버라이드
+  # ---------------------------------------------------------------------------
+  # ttl 을 짧게 잡으면 TTL 만료 시나리오를 빠르게 검증 가능. lock-wait 도 줄여
+  # 동시성 테스트의 실패 응답이 빨리 떨어지도록.
+  seat:
+    hold:
+      ttl:        PT2S      # 2초 — 만료 시나리오 빠른 검증용
+      lock-wait:  PT0.1S    # 100ms — 충돌 시 빠른 실패
+      max-seats:  4
+      # 통합 테스트에선 스케줄러를 끄고 service.expireDueHolds() 를 직접 호출해 결정적으로 검증.
+      # 만료 시나리오를 보고 싶은 테스트만 SeatHoldProperties.Expiry.setEnabled(true) 로 켠다.
+      expiry:
+        scan-interval: PT0.2S
+        batch-size:    50
+        enabled:       false
+
+  # ---------------------------------------------------------------------------
+  # 공용 Outbox 테스트 오버라이드 — publisher 끄고 stage 만 검증.
+  # ---------------------------------------------------------------------------
+  outbox:
+    enabled:       false
+    scan-interval: PT0.2S
+    batch-size:    20
+    send-timeout:  PT1S
+    max-retries:   3
+    base-backoff:  PT0.1S
+    max-backoff:   PT2S
+
+  # ---------------------------------------------------------------------------
+  # module-queue / module-pricing / module-ws-bridge 테스트 오버라이드
+  # ---------------------------------------------------------------------------
+  # 본 모듈 통합 테스트가 자체적으로 키를 안 채워줘서 SmokeIT 가 app-gateway 풀 부팅 시
+  # placeholder 미해결로 깨졌었다. 모든 스케줄러/컨슈머가 참조하는 키를 한곳에 정렬.
+  queue:
+    enabled:            false
+    admit-rate-per-sec: 50
+    admission-ttl:      PT5M
+    ticket-ttl:         PT1H
+    scan-interval:      PT1S
+    # 대기열 레이트리밋은 통합 테스트에서 개별 IT 가 명시적으로 오버라이드해서 켠다.
+    # 기본은 꺼둬야 SmokeIT / 기존 auth IT 등이 예상치 못한 429 에 걸리지 않는다.
+    rate-limit:
+      enabled: false
+      per-ip:
+        capacity:      60
+        refill-period: PT1M
+      per-user:
+        capacity:      120
+        refill-period: PT1M
+    # 매크로 탐지도 마찬가지 — 기본 off. 자체 IT 에서 켠다.
+    macro-detection:
+      enabled:         false
+      window-size:     20
+      threshold:       0.75
+      block-duration:  PT5M
+      window-ttl:      PT10M
+      weight-interval: 0.7
+      weight-ua:       0.3
+
+  pricing:
+    enabled:            false
+    tick-interval:      PT1S
+    alpha:              0.50
+    beta:               0.30
+    floor-multiplier:   0.70
+    ceiling-multiplier: 2.00
+
+  ws-bridge:
+    dedup-ttl:      PT5M
+    dedup-max-size: 100000
+    consumer-group: ws-bridge-test
+
+logging:
+  level:
+    root: WARN
+    com.ticketing: INFO

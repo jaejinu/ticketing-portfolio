@@ -1,0 +1,25 @@
+# EditorConfig: 에디터·IDE 간 일관된 스타일 (https://editorconfig.org)
+# IntelliJ, VS Code 모두 기본 지원.
+
+root = true
+
+# 모든 파일 공통: UTF-8, LF, 끝 공백 자르기, 마지막 줄에 newline
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Java/Kotlin/Gradle: 4 spaces (관례)
+[*.{java,kt,kts}]
+indent_size = 4
+
+# Markdown: 줄 끝 공백 살림 (두 칸 = 강제 줄바꿈)
+[*.md]
+trim_trailing_whitespace = false
+
+# Makefile은 무조건 탭
+[Makefile]
+indent_style = tab

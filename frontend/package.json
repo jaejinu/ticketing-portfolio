@@ -1,0 +1,44 @@
+{
+  "name": "ticketing-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "다이나믹 프라이싱 티켓팅 플랫폼 프론트엔드 (Next.js 16 App Router)",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "next dev -p 3002",
+    "dev:lan": "node scripts/lan-dev.mjs",
+    "build": "next build",
+    "start": "next start -p 3002",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
+    "@stomp/stompjs": "^7.3.0",
+    "@tanstack/react-query": "^5.100.10",
+    "@tanstack/react-query-devtools": "^5.100.10",
+    "clsx": "^2.1.1",
+    "next": "16.3.8",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "react-hook-form": "^7.75.0",
+    "tailwind-merge": "^2.6.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@tailwindcss/postcss": "^4.3.0",
+    "@types/node": "^22.19.18",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "16.3.8",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^5.9.3"
+  },
+  "packageManager": "pnpm@9.15.9"
+}

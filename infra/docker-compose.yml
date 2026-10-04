@@ -1,0 +1,205 @@
+# =============================================================================
+# 다이나믹 프라이싱 티켓팅 — 핵심 인프라 (docker-compose)
+# -----------------------------------------------------------------------------
+# 이 파일은 백엔드/프론트가 의존하는 "데이터 계층 + 외부 시스템 mock"을 띄운다.
+# 관측성(Grafana/Loki/Tempo/Mimir)는 docker-compose.lgtm.yml로 분리.
+#
+# 디자인 결정:
+#   - 모든 서비스는 ticketing-net 한 네트워크에 묶어 서비스명으로 DNS 통신.
+#   - host 포트도 노출해서 IDE/psql/redis-cli로 직접 접속 가능.
+#   - 헬스체크가 통과해야 백엔드 컨테이너가 의존할 때 안전.
+#   - Kafka는 KRaft 단일 노드 — Zookeeper 없이 단순화 (멀티 브로커 안 함).
+# =============================================================================
+
+# Compose 스펙은 최신을 쓰되 version 키는 더 이상 권장되지 않아 생략.
+
+networks:
+  # 모든 컨테이너가 공유하는 사설 네트워크.
+  # 백엔드 컨테이너도 이후 같은 네트워크에 붙여 "postgres:5432" 식으로 부른다.
+  ticketing-net:
+    driver: bridge
+
+volumes:
+  # 데이터 영속화 — `make down`은 유지, `make nuke` 만 삭제.
+  postgres-data:
+  redis-data:
+  kafka-data:
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL + TimescaleDB
+  # ---------------------------------------------------------------------------
+  # 좌석/예약/결제/가격이력 모두 단일 DB. 가격이력만 TimescaleDB 하이퍼테이블로.
+  postgres:
+    image: timescale/timescaledb:2.16.1-pg16
+    container_name: ticketing-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ticket}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ticket}
+      POSTGRES_DB: ${POSTGRES_DB:-ticketing}
+      # 로컬 개발 편의 — pg_stat_statements 자동 로드.
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    ports:
+      # ${VAR:-default} 패턴은 .env 미설정 시 fallback.
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # init-db/*.sql 은 빈 DB 최초 기동 시 알파벳 순으로 자동 실행됨.
+      # 한 번 실행되면 volume에 데이터가 남아 다시 실행되지 않는다.
+      - ./init-db:/docker-entrypoint-initdb.d:ro
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_preload_libraries=timescaledb,pg_stat_statements"
+      - "-c"
+      - "max_connections=200"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ticket} -d ${POSTGRES_DB:-ticketing}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [ticketing-net]
+
+  # ---------------------------------------------------------------------------
+  # Redis 7
+  # ---------------------------------------------------------------------------
+  # 좌석 점유 락(SETNX + TTL), 대기열 토큰, 실시간 가격 캐시.
+  # appendonly = AOF 활성화 — 로컬에서 재시작해도 락 상태 유지.
+  redis:
+    image: redis:7.4-alpine
+    container_name: ticketing-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [ticketing-net]
+
+  # ---------------------------------------------------------------------------
+  # Kafka 3.7 (KRaft 단일 노드)
+  # ---------------------------------------------------------------------------
+  # 가격 변동 이벤트 / 결제 결과 이벤트 등 비동기 통신.
+  # KRaft = Zookeeper 제거. 단일 노드는 broker + controller 역할을 동시에 함.
+  # 한계: 단일 노드는 가용성 X — 포트폴리오/로컬 한정. ADR에 명시.
+  kafka:
+    # 2025년 8월부터 bitnami는 일반 태그를 bitnamilegacy/* 로 이관 (bitnami/* 는 latest 한정).
+    # 안정 시연을 위해 legacy 레지스트리의 3.7.1 고정 태그를 쓴다.
+    image: bitnamilegacy/kafka:3.7.1
+    container_name: ticketing-kafka
+    restart: unless-stopped
+    ports:
+      # 호스트 → EXTERNAL 리스너(9094)로 연결해야 한다.
+      # 9092(PLAINTEXT 내부 리스너)로 매핑하면 클라이언트가 메타데이터에서
+      # advertised "kafka:9092"(도커 내부 DNS) 를 받아 이후 모든 연결이 실패한다
+      # (호스트에서 도는 백엔드의 Kafka consume 전멸 — 알람/WS팬아웃/수요집계).
+      - "${KAFKA_PORT:-9092}:9094"
+      - "${KAFKA_CONTROLLER_PORT:-9093}:9093"
+      # k3d pod 용 리스너 — pod 는 host.k3d.internal 로 호스트에 접근하므로
+      # advertised 주소도 host.k3d.internal 이어야 한다 (localhost 광고를 받으면 pod 안에서 즉사).
+      - "9096:9096"
+    environment:
+      # KRaft 핵심 설정 ----------------------------------------------------
+      # 노드 ID: 단일 노드라 1로 고정. 클러스터 구성 시 노드마다 다른 값.
+      KAFKA_CFG_NODE_ID: "1"
+      # 한 프로세스가 broker + controller 둘 다.
+      KAFKA_CFG_PROCESS_ROLES: "broker,controller"
+      # 컨트롤러 quorum — 단일 노드라 자기 자신만.
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      # 리스너 정의: 내부(서비스간) + 외부(host) + 컨트롤러.
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094,K3D://:9096"
+      # advertised: 컨테이너 외부(호스트)는 localhost:9092, k3d pod 는 host.k3d.internal:9096.
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,EXTERNAL://localhost:${KAFKA_PORT:-9092},K3D://host.k3d.internal:9096"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,K3D:PLAINTEXT"
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      # 클러스터 ID — bitnami는 비어있으면 자동 생성하지만, 고정해두면 볼륨 재사용 안정.
+      KAFKA_KRAFT_CLUSTER_ID: ${KAFKA_KRAFT_CLUSTER_ID:-ticketing-kafka-cluster}
+      # 개발 편의 ----------------------------------------------------------
+      # 토픽 자동 생성 — 운영에선 false 권장. 로컬에선 편의를 위해 on.
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # 단일 노드라 모든 토픽 RF=1만 가능.
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      # bitnami 이미지 보안 — 익명 PLAINTEXT 허용.
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    volumes:
+      - kafka-data:/bitnami/kafka
+    healthcheck:
+      # KRaft 모드에서도 kafka-topics.sh로 메타데이터 조회 가능하면 준비 완료.
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    networks: [ticketing-net]
+
+  # ---------------------------------------------------------------------------
+  # MailHog — SMTP mock
+  # ---------------------------------------------------------------------------
+  # 예매 확정 메일 등 트랜잭션 메일을 잡아 UI에서 확인.
+  # 운영에선 SES/SendGrid로 교체 (NOTIFICATION_EMAIL_MODE=real).
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: ticketing-mailhog
+    restart: unless-stopped
+    ports:
+      - "${MAILHOG_SMTP_PORT:-1025}:1025"  # SMTP
+      - "${MAILHOG_UI_PORT:-8025}:8025"    # Web UI
+    healthcheck:
+      # mailhog 이미지에는 wget이 포함돼 있다. 8025(UI)가 응답하면 SMTP도 살아있는 것으로 본다.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8025/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [ticketing-net]
+
+  # ---------------------------------------------------------------------------
+  # FCM Mock — 푸시 알림 흉내
+  # ---------------------------------------------------------------------------
+  # 실제 FCM API 시그니처를 흉내내 200을 돌려주는 Node 서버.
+  # 운영에선 FCM_MODE=real 토글로 실제 https://fcm.googleapis.com 으로 보냄.
+  fcm-mock:
+    build:
+      context: ./mock-services/fcm-mock
+    container_name: ticketing-fcm-mock
+    restart: unless-stopped
+    environment:
+      PORT: "8086"
+    ports:
+      - "${FCM_MOCK_PORT:-8086}:8086"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8086/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [ticketing-net]
+
+  # ---------------------------------------------------------------------------
+  # Mock PG — 결제 게이트웨이 흉내
+  # ---------------------------------------------------------------------------
+  # 95% 성공 / 4% 한도초과(402) / 1% 5초 타임아웃을 시뮬레이션.
+  # 보상 트랜잭션 / 재시도 / 서킷브레이커 시연용.
+  mock-pg:
+    build:
+      context: ./mock-services/mock-pg
+    container_name: ticketing-mock-pg
+    restart: unless-stopped
+    environment:
+      PORT: "8087"
+      MOCK_PG_SEED: "${MOCK_PG_SEED:-42}"
+    ports:
+      - "${MOCK_PG_PORT:-8087}:8087"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8087/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [ticketing-net]

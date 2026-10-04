@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800" role="img" aria-labelledby="title">
+<title id="title">PLANET US — OUR OWN LITTLE UNIVERSE</title>
+<rect width="600" height="800" fill="#d9cbea"/>
+<g fill="none" stroke="#392d63" stroke-width="2"><ellipse cx="302" cy="208" rx="244" ry="89" transform="rotate(-20 302 208)"/><ellipse cx="302" cy="208" rx="244" ry="89" transform="rotate(20 302 208)"/></g><circle cx="302" cy="208" r="69" fill="#392d63"/><circle cx="472" cy="132" r="18" fill="#b44a48"/><path d="M478 551L491 590L530 603L491 616L478 655L465 616L426 603L465 590Z" fill="#b44a48"/>
+<g fill="#392d63"><text x="42" y="52" font-family="Arial,sans-serif" font-size="13" letter-spacing="3">TICKETING / FAN MEETING</text>
+<text x="42" y="378" font-size="91" font-family="Georgia,serif" font-weight="700" letter-spacing="-3">PLANET</text><text x="42" y="456" font-size="91" font-family="Georgia,serif" font-weight="700" letter-spacing="-3">US</text>
+<text x="44" y="539" font-family="Arial,sans-serif" font-size="17" letter-spacing="2">OUR OWN LITTLE UNIVERSE</text>
+<path d="M42 718H558" stroke="#392d63" stroke-width="1"/>
+<text x="42" y="750" font-family="Arial,sans-serif" font-size="11" letter-spacing="2">LIVE PERFORMANCE / BE THERE.</text>
+<text x="558" y="750" text-anchor="end" font-family="Arial,sans-serif" font-size="11">FAN MEETING</text></g></svg>

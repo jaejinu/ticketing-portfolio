@@ -1,0 +1,66 @@
+# =============================================================================
+# Grafana 데이터소스 — 자동 등록 (provisioning)
+# -----------------------------------------------------------------------------
+# 컨테이너 기동 시 UI에서 따로 추가할 필요 없이 Loki/Tempo/Mimir가 등록된다.
+# editable: true 로 두면 UI에서 임시로 수정 가능 (저장은 안 됨).
+# =============================================================================
+
+apiVersion: 1
+
+datasources:
+  # Loki — 로그
+  - name: Loki
+    type: loki
+    access: proxy
+    uid: loki
+    url: http://loki:3100
+    isDefault: false
+    editable: true
+    jsonData:
+      # Tempo의 trace_id 를 가진 로그에서 trace 보기로 점프.
+      derivedFields:
+        - datasourceUid: tempo
+          matcherRegex: "trace_id=(\\w+)"
+          name: TraceID
+          url: "$${__value.raw}"
+
+  # Tempo — 트레이스
+  - name: Tempo
+    type: tempo
+    access: proxy
+    uid: tempo
+    url: http://tempo:3200
+    isDefault: false
+    editable: true
+    jsonData:
+      # trace → log 점프. trace의 service.name 기반.
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: -1h
+        spanEndTimeShift: 1h
+        tags: [{ key: 'service.name', value: 'service' }]
+        filterByTraceID: true
+        filterBySpanID: false
+      # trace → metric 점프 (서비스 그래프 등).
+      tracesToMetrics:
+        datasourceUid: mimir
+        tags: [{ key: 'service.name', value: 'service' }]
+      serviceMap:
+        datasourceUid: mimir
+      nodeGraph:
+        enabled: true
+
+  # Mimir — 메트릭 (Prometheus 호환)
+  - name: Mimir
+    type: prometheus
+    access: proxy
+    uid: mimir
+    url: http://mimir:9009/prometheus
+    isDefault: true
+    editable: true
+    jsonData:
+      httpMethod: POST
+      # Mimir는 멀티테넌트 헤더가 필요할 수 있으나 multitenancy_enabled: false 이므로 생략.
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo

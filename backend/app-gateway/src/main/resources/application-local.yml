@@ -1,0 +1,308 @@
+# =============================================================================
+# application-local.yml — 로컬 개발 프로파일
+# -----------------------------------------------------------------------------
+# docker-compose 로 띄운 인프라(infra/docker-compose.yml) 를 가리킨다.
+# 모든 호스트/계정은 환경 변수 우선, 기본값은 compose 의 기본 설정과 동일.
+# =============================================================================
+spring:
+  # OTel SDK 2.7 모듈 간 버전 불일치 (InstrumentationUtil 누락) 로 bootRun 부팅 깨짐.
+  # 운영용 OTel 의존은 build 에 유지하되 local 에선 auto-config 만 끈다.
+  # Phase 후속에서 opentelemetry-bom 으로 통합 버전 일치 후 제거 예정.
+  autoconfigure:
+    exclude:
+      - io.opentelemetry.instrumentation.spring.autoconfigure.OpenTelemetryAutoConfiguration
+
+  datasource:
+    # infra/docker-compose.yml 이 host port 5440 로 노출 (POSTGRES_PORT=5440).
+    # 5432~5435 가 다른 dev DB 컨테이너로 점유돼있어 5440 으로 우회.
+    # 환경변수 DB_URL 또는 make backend 의 dotenv-load 로 override 가능.
+    url:      ${DB_URL:jdbc:postgresql://localhost:5440/ticketing}
+    username: ${DB_USER:ticket}
+    password: ${DB_PASSWORD:ticket}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      data-source-properties:
+        # outbox_events.payload 는 JSONB 인데 JPA 는 String 으로 바인딩한다.
+        # stringtype=unspecified 로 PG 드라이버가 서버 타입에 맞춰 캐스팅하게 함
+        # (없으면 "column payload is of type jsonb but expression is of type character varying").
+        # 통합 테스트 베이스(QueueIntegrationTestBase 등)와 동일 설정.
+        stringtype: unspecified
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      # infra/docker-compose.yml 이 host port 6390 으로 노출 (REDIS_PORT=6390).
+      # 6379 가 다른 dev Redis 컨테이너에 점유돼 6390 으로 우회.
+      port: ${REDIS_PORT:6390}
+
+  # JavaMailSender 자동 등록 — SmtpAlertSender (module-alert) 가 의존.
+  # docker-compose 의 MailHog (port 1025) 가 SMTP 수신 + http://localhost:8025 UI 노출.
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:1025}
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    consumer:
+      group-id: ticketing-backend-local
+      auto-offset-reset: earliest
+      enable-auto-commit: false  # ack 멱등성 보장
+    producer:
+      acks: all                  # 손실 방지(좌석/결제 이벤트는 절대 잃으면 안 됨)
+      retries: 5
+
+# -----------------------------------------------------------------------------
+# 애플리케이션 고유 설정
+# -----------------------------------------------------------------------------
+# (legacy) ticketing.jwt.* 는 Phase 0 placeholder. 신규 app.auth.* 가 정식 경로.
+ticketing:
+  jwt:
+    private-key-path: ${JWT_PRIVATE_KEY_PATH:./keys/jwt-private.pem}
+    public-key-path:  ${JWT_PUBLIC_KEY_PATH:./keys/jwt-public.pem}
+    issuer: ticketing-backend
+    access-token-ttl-seconds: 900       # 15분
+    refresh-token-ttl-seconds: 1209600  # 14일
+
+# -----------------------------------------------------------------------------
+# 인증 (module-auth) 설정
+# -----------------------------------------------------------------------------
+# 이 키 트리는 module-auth 의 @Value("${app.auth.*}") 가 직접 읽는다.
+# 환경 변수 우선, 기본값은 로컬 개발 편의에 맞춤.
+app:
+  auth:
+    jwt:
+      # 키 파일 경로. 파일이 없고 auto-generate-keys=true 면 부팅 시 자동 생성된다.
+      private-key-path: ${JWT_PRIVATE_KEY_PATH:./backend/module-auth/src/main/resources/keys/jwt-private.pem}
+      public-key-path:  ${JWT_PUBLIC_KEY_PATH:./backend/module-auth/src/main/resources/keys/jwt-public.pem}
+      auto-generate-keys: ${JWT_AUTO_GENERATE:true}     # 로컬은 편의상 true. 운영은 false 권장.
+      issuer: ticketing                                  # JWT iss 클레임. frontend 와 약속된 값.
+      access-token-ttl: PT15M                            # 짧게: 탈취 노출 시간 최소화
+      refresh-token-ttl: P14D                            # 길게: 사용자 재로그인 부담 완화
+    lock:
+      fail-threshold: 5                                  # 5회 실패 → 잠금 (spec)
+      fail-window:    PT10M                              # 10분 내 5회 — 의도적 brute-force 와 우발적 실수 분리
+      duration:       PT5M                               # 5분간 잠금 (spec)
+    bcrypt:
+      strength: 12                                       # OWASP 권장 균형점
+    cors:
+      # 3002: 이 머신은 3000 이 다른 dev 서버에 점유돼 Next 가 3002 로 옮겨 뜬다.
+      # WebSocketConfig(ws-bridge) 의 allowed origin 과 세트로 유지할 것.
+      allowed-origins: ${AUTH_CORS_ORIGINS:http://localhost:3000,http://localhost:3100,http://localhost:3002}
+
+  fcm:
+    project-id: ${FCM_PROJECT_ID:ticketing-dev}
+    mode:       ${FCM_MODE:mock}        # mock | real
+
+  smtp:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:1025}             # mailhog 기본
+    mode: ${SMTP_MODE:mailhog}          # mailhog | real
+
+  # ---------------------------------------------------------------------------
+  # Phase 7b: 알람 채널별 실제 발송
+  # ---------------------------------------------------------------------------
+  # 왜 이 값들인지:
+  #   - fcm.mock-url: mock-fcm 컨테이너 (infra/mock-services/mock-fcm).
+  #   - fcm.quota-per-min 600: 실제 FCM Free tier 와 비슷한 분당 제한 (1만/일 가까이).
+  #   - smtp.from: 발신자 주소 (MailHog 가 그대로 표시).
+  #   - smtp.quota-per-min 120: SMTP relay 가 보호되어야 하므로 작게.
+  #   - webhook.quota-per-min 300: 사용자별 webhook 합산 한도.
+  alert:
+    fcm:
+      # fcm-mock 은 실제 FCM v1 API 경로를 흉내낸다 — /send 가 아니라 messages:send.
+      mock-url:      ${ALERT_FCM_URL:http://localhost:8086/v1/projects/ticketing-dev/messages:send}
+      timeout:       ${ALERT_FCM_TIMEOUT:PT3S}
+      quota-per-min: ${ALERT_FCM_QUOTA:600}
+    smtp:
+      from:          ${ALERT_SMTP_FROM:noreply@ticketing.local}
+      quota-per-min: ${ALERT_SMTP_QUOTA:120}
+    webhook:
+      quota-per-min: ${ALERT_WEBHOOK_QUOTA:300}
+
+  payment:
+    mock-pg-base-url: ${MOCK_PG_BASE_URL:http://localhost:8087}
+    # Phase 3b: 결제 saga 정책
+    #   - mock-pg-timeout 3초: 사용자 결제 진행 페이지의 답답함 한계점.
+    #   - fail-on-pg-error true: PG 호출 IOException/timeout 시 즉시 FAILED 마킹.
+    #     운영 단계에서 reconciler 도입 후 false 로 전환 가능.
+    mock-pg-timeout:  ${PAYMENT_PG_TIMEOUT:PT3S}
+    fail-on-pg-error: ${PAYMENT_FAIL_ON_PG_ERROR:true}
+
+  # ---------------------------------------------------------------------------
+  # module-seat (좌석 분산락) 정책
+  # ---------------------------------------------------------------------------
+  # 왜 이 수치인지:
+  #   - ttl 5분: 결제 페이지 진입 → 카드 입력 → 승인까지 충분 + 매크로가 좌석을 오래 잡는 것 방지.
+  #     spec(R-NQPLRH) 의 결정. 운영에서 KPI(중복 판매 0건)와 같이 검증해야 함.
+  #   - lock-wait 200ms: 사용자 체감 가능한 지연 상한. 길어지면 폭주 시 큐가 빠르게 적체.
+  #   - max-seats 4: 1인 4매 제한 정책. 매크로의 대량 점유 차단.
+  seat:
+    hold:
+      ttl:        ${SEAT_HOLD_TTL:PT5M}
+      lock-wait:  ${SEAT_HOLD_LOCK_WAIT:PT0.2S}
+      max-seats:  ${SEAT_HOLD_MAX_SEATS:4}
+      # Phase 2: TTL 만료 스케줄러
+      #   - scan-interval 1초 = 만료 후 다른 사용자가 거의 즉시 점유 가능한 체감.
+      #   - batch-size 100 = 한 사이클이 너무 오래 끌지 않도록 상한 (한 회차 좌석 폭주 대비).
+      #   - enabled 는 운영에서 무중단 정비 시 false 로 즉시 비활성화.
+      expiry:
+        scan-interval: ${SEAT_HOLD_EXPIRY_SCAN:PT1S}
+        batch-size:    ${SEAT_HOLD_EXPIRY_BATCH:100}
+        enabled:       ${SEAT_HOLD_EXPIRY_ENABLED:true}
+
+  # ---------------------------------------------------------------------------
+  # Phase 6a: 가상 대기열
+  # ---------------------------------------------------------------------------
+  # 왜 이 수치인지:
+  #   - admit-rate-per-sec 50: 5만 동접을 1000초(약 17분) 안에 흡수 — 1차 티켓팅 합리적 대기.
+  #   - admission-ttl 5분: 결제 흐름 시간과 동일 — 미완료 시 자리 양보.
+  #   - ticket-ttl 1시간: 사용자가 떠난 좀비 ticket 정리.
+  queue:
+    enabled:            ${QUEUE_ENABLED:true}
+    admit-rate-per-sec: ${QUEUE_ADMIT_RATE:50}
+    admission-ttl:      ${QUEUE_ADMISSION_TTL:PT5M}
+    ticket-ttl:         ${QUEUE_TICKET_TTL:PT1H}
+    scan-interval:      ${QUEUE_SCAN:PT1S}
+    # -------------------------------------------------------------------------
+    # Phase 6b: 대기열 API 레이트리밋 (Bucket4j Redisson 백엔드)
+    # -------------------------------------------------------------------------
+    # 왜 이 수치인지:
+    #   - per-ip 60/min: 사람이 새로고침해도 초당 1회 미만이 정상. 매크로 1차 방어.
+    #   - per-user 120/min: NAT/공유 IP 뒤 정상 사용자 보호를 위해 IP 스코프의 2배.
+    #   - refill-period 1분: 순간 초과를 잠깐만 참았다가 곧 회복(사람 사용성).
+    # 실제 튜닝은 Grafana 의 queue.ratelimit.blocked{scope=...} 카운터를 보면서 조정.
+    rate-limit:
+      enabled: ${QUEUE_RATELIMIT_ENABLED:true}
+      per-ip:
+        capacity:      ${QUEUE_RATELIMIT_IP_CAP:60}
+        refill-period: ${QUEUE_RATELIMIT_IP_PERIOD:PT1M}
+      per-user:
+        capacity:      ${QUEUE_RATELIMIT_USER_CAP:120}
+        refill-period: ${QUEUE_RATELIMIT_USER_PERIOD:PT1M}
+    # -------------------------------------------------------------------------
+    # Phase 6c: 매크로 탐지 점수 모델
+    # -------------------------------------------------------------------------
+    # 왜 이 수치인지:
+    #   - window-size 20: 사람이 정상 진입해도 20 요청 정도는 자연스러운 페이지 탐색 범위.
+    #     이보다 크면 판정이 늦어 매크로가 이미 좌석을 잡아버림.
+    #   - threshold 0.75: interval 완벽 균일(=1.0)만으로는 미달(0.7). UA 부재/봇시그니처가 겹쳐야 발동.
+    #     오탐률 낮추는 방향.
+    #   - block-duration 5분: 결제 흐름 시간과 동일. 무기한 차단은 오탐 리스크가 커 짧게.
+    #   - weights (interval 0.7, ua 0.3): interval 이 지표로서 더 강력하다는 판단.
+    macro-detection:
+      enabled:        ${QUEUE_MACRO_ENABLED:true}
+      window-size:    ${QUEUE_MACRO_WINDOW:20}
+      threshold:      ${QUEUE_MACRO_THRESHOLD:0.75}
+      block-duration: ${QUEUE_MACRO_BLOCK:PT5M}
+      window-ttl:     ${QUEUE_MACRO_WINDOW_TTL:PT10M}
+      weight-interval: ${QUEUE_MACRO_W_INT:0.7}
+      weight-ua:       ${QUEUE_MACRO_W_UA:0.3}
+
+  # ---------------------------------------------------------------------------
+  # Phase 5a: 다이나믹 프라이싱 엔진
+  # ---------------------------------------------------------------------------
+  # 왜 이 수치인지:
+  #   - tick-interval 1초: 좌석 페이지 사용자가 가격 변동을 체감하기 자연스러운 주기.
+  #   - alpha 0.5 / beta 0.3: 1차 티켓팅 도메인의 일반적 변동 폭 + 점유 시도 압력 반영.
+  #   - floor 0.7 / ceiling 2.0: 가격 극단치 차단.
+  pricing:
+    enabled:            ${PRICING_ENABLED:true}
+    tick-interval:      ${PRICING_TICK_INTERVAL:PT1S}
+    alpha:              ${PRICING_ALPHA:0.50}
+    beta:               ${PRICING_BETA:0.30}
+    floor-multiplier:   ${PRICING_FLOOR:0.70}
+    ceiling-multiplier: ${PRICING_CEILING:2.00}
+
+  # ---------------------------------------------------------------------------
+  # Phase 4: ws-bridge (Kafka 컨슘 → STOMP fanout)
+  # ---------------------------------------------------------------------------
+  # 왜 이 수치인지:
+  #   - dedup-ttl 5분: outbox publisher max-retries 윈도우 일부를 커버 + 메모리 보호 균형.
+  #   - dedup-max-size 10만: 분당 약 333 eps 가 5분 안에 누적되는 정도.
+  #   - consumer-group "ws-bridge": 다중 인스턴스 시 같은 그룹이 partition 분담.
+  ws-bridge:
+    dedup-ttl:      ${WS_BRIDGE_DEDUP_TTL:PT5M}
+    dedup-max-size: ${WS_BRIDGE_DEDUP_MAX:100000}
+    consumer-group: ${WS_BRIDGE_GROUP:ws-bridge}
+
+  # ---------------------------------------------------------------------------
+  # Phase 3a: 공용 Transactional Outbox (seat / payment / alert 가 함께 사용)
+  # ---------------------------------------------------------------------------
+  # 왜 이 수치인지:
+  #   - scan-interval 1초 = stage 된 이벤트가 1초 이내 발행되어야 후속 모듈의 latency 누적 작음.
+  #   - send-timeout 5초 = Kafka 일시 장애 시 publisher 가 너무 오래 멈추지 않도록.
+  #   - max-retries 10, base-backoff 1s, max-backoff 5m → 약 17분 안에 격리(FAILED) 결정.
+  outbox:
+    enabled:       ${OUTBOX_ENABLED:true}
+    scan-interval: ${OUTBOX_SCAN:PT1S}
+    batch-size:    ${OUTBOX_BATCH:50}
+    send-timeout:  ${OUTBOX_SEND_TIMEOUT:PT5S}
+    max-retries:   ${OUTBOX_MAX_RETRIES:10}
+    base-backoff:  ${OUTBOX_BASE_BACKOFF:PT1S}
+    max-backoff:   ${OUTBOX_MAX_BACKOFF:PT5M}
+
+  # ---------------------------------------------------------------------------
+  # module-show 시드 (Phase 3 진입 직전 핵심)
+  # ---------------------------------------------------------------------------
+  # 왜 이 설정인지:
+  #   - Phase 3 (module-seat) 가 부팅 즉시 Redis 좌석 스냅샷을 만들려면
+  #     DB 에 좌석 데이터가 이미 있어야 한다. SeedRunner 가 400 좌석을 idempotent 하게 생성.
+  #   - organizer-password-hash 는 데모 organizer 의 BCrypt(strength=12) 해시.
+  #     평문은 'Demo1234!' — 로컬 데모용. 운영 환경에선 절대 사용 금지(prod 프로파일에 노출 안 함).
+  #   - enabled=false 로 두면 시드 전체가 스킵되어 빈 DB 로 부팅 가능 (수동 등록 시연 시).
+  show:
+    seed:
+      enabled: ${SHOW_SEED_ENABLED:true}
+      # 데모 옵션 — 시드 회차를 곧장 ON_SALE 로 전환.
+      #   pricing / queue 스케줄러가 ON_SALE 회차만 처리하므로, 시연 직후 가격 변동/대기열 admit
+      #   동작을 보려면 true. 운영에서는 organizer 의 명시 open 호출이 정상 경로 — 반드시 false.
+      start-on-sale: ${SHOW_SEED_START_ON_SALE:true}
+      # BCrypt strength=12 해시. dev 시드 전용 고정값.
+      # 평문: Demo1234! (영문 대소문자 + 숫자 + 특수문자 포함 — Phase 1 password policy 통과).
+      # NOTE: 해시 안의 '$' 가 Spring placeholder 와 충돌하지 않도록 단일 따옴표 + ${...} 미사용.
+      #       운영 환경에선 절대 사용 금지 — 본 해시는 dev 시드 전용 고정값.
+      # 'Demo1234!' 의 BCrypt(strength=12) 해시 — 2026-07-29 QA 에서 기존 값이
+      # 어떤 후보 비밀번호와도 불일치(placeholder 잔재)라 데모 계정 로그인이
+      # 아예 불가능했던 것을 발견하고 실제 해시로 교체했다.
+      organizer-password-hash: '$2a$12$wCavd0zK7ON1AuEwR26OCe2Kro.OeybRI3mEc11FqBv0zxIX0Xx8.'
+
+# -----------------------------------------------------------------------------
+# 관측성: OTLP HTTP 익스포터 (otel collector → LGTM)
+# -----------------------------------------------------------------------------
+otel:
+  exporter:
+    otlp:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}
+  resource:
+    attributes:
+      service.name: ticketing-backend
+
+management:
+  metrics:
+    distribution:
+      # p95/p99 패널이 PromQL histogram_quantile 로 계산되려면 explicit bucket
+      # 경계(le 라벨)가 필요하다. 이 3개 Timer 에 대해 백분위 히스토그램을 켠다.
+      # (안 켜면 Micrometer 가 +Inf 버킷 하나만 보내 histogram_quantile 이 NaN)
+      percentiles-histogram:
+        seat.lock.acquire.duration: true
+        payment.pg.call.duration: true
+        alert.eval.tick.duration: true
+  otlp:
+    metrics:
+      export:
+        url: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/metrics
+        # Micrometer OTLP push 주기 — 기본 60초는 데이터포인트 간격이 넓어
+        # rate()·5초 새로고침 대시보드가 "NO_DATA" 처럼 보인다. 로컬 시연은 10초로
+        # 촘촘히 밀어 Grafana KPI 대시보드가 실시간으로 그려지게 한다.
+        # (운영은 스크레이프 비용 때문에 기본값 권장 — 데모 한정 튜닝)
+        step: ${OTEL_METRICS_STEP:10s}
+        # 히스토그램을 explicit bucket 형태로 — Prometheus le 라벨 호환.
+        # 기본(base2 exponential)은 Mimir 에서 histogram_quantile 로 못 읽는다.
+        histogram-flavor: ${OTEL_HISTOGRAM_FLAVOR:explicit_bucket_histogram}
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/traces
+
+logging:
+  level:
+    root: INFO
+    com.ticketing: DEBUG

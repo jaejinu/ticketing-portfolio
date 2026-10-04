@@ -1,0 +1,23 @@
+{{- if .Values.ingress.enabled }}
+# Traefik(k3s 기본) 인그레스 — k3d LB 의 호스트 18080→80 매핑과 조합해
+# http://{{ .Values.ingress.host }}:18080 으로 접근한다.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "ticketing-backend.name" . }}
+  labels:
+    {{- include "ticketing-backend.labels" . | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "ticketing-backend.name" . }}
+                port:
+                  name: http
+{{- end }}

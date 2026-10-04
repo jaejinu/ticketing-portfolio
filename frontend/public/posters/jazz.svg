@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800" role="img" aria-labelledby="title">
+<title id="title">MIDNIGHT SWING — AN EVENING IN RHYTHM</title>
+<rect width="600" height="800" fill="#e8dfcc"/>
+<g fill="none" stroke="#202f2c" stroke-width="18"><ellipse cx="88" cy="180" rx="65" ry="105"/><ellipse cx="218" cy="180" rx="65" ry="105"/><ellipse cx="348" cy="180" rx="65" ry="105"/><ellipse cx="478" cy="180" rx="65" ry="105"/><ellipse cx="608" cy="180" rx="65" ry="105"/></g><circle cx="484" cy="613" r="73" fill="#a24334"/><path d="M42 560H370M42 588H370M42 616H370M42 644H370" stroke="#202f2c" stroke-width="2"/>
+<g fill="#202f2c"><text x="42" y="52" font-family="Arial,sans-serif" font-size="13" letter-spacing="3">TICKETING / JAZZ</text>
+<text x="42" y="378" font-size="70" font-family="Arial,sans-serif" font-weight="700" letter-spacing="-3">MIDNIGHT</text><text x="42" y="456" font-size="70" font-family="Arial,sans-serif" font-weight="700" letter-spacing="-3">SWING</text>
+<text x="44" y="539" font-family="Arial,sans-serif" font-size="17" letter-spacing="2">AN EVENING IN RHYTHM</text>
+<path d="M42 718H558" stroke="#202f2c" stroke-width="1"/>
+<text x="42" y="750" font-family="Arial,sans-serif" font-size="11" letter-spacing="2">LIVE PERFORMANCE / BE THERE.</text>
+<text x="558" y="750" text-anchor="end" font-family="Arial,sans-serif" font-size="11">JAZZ</text></g></svg>

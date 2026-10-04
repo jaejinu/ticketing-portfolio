@@ -1,0 +1,22 @@
+# =============================================================================
+# Grafana 대시보드 provisioning
+# -----------------------------------------------------------------------------
+# /etc/grafana/provisioning/dashboards 안의 *.json 을 자동 로드.
+# updateIntervalSeconds 마다 파일 변경을 폴링해 핫리로드.
+# =============================================================================
+
+apiVersion: 1
+
+providers:
+  - name: ticketing-dashboards
+    orgId: 1
+    folder: 'Ticketing'
+    folderUid: ticketing
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

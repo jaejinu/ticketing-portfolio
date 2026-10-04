@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800" role="img" aria-labelledby="title">
+<title id="title">AURORA — A VOICE THROUGH THE NIGHT</title>
+<rect width="600" height="800" fill="#163b37"/>
+<g fill="none" stroke="#b7d1bc" stroke-width="2"><path d="M-40 120Q190 40 350 160T680 75"/><path d="M-40 127Q190 53 350 165T680 89"/><path d="M-40 134Q190 66 350 170T680 103"/><path d="M-40 141Q190 79 350 175T680 117"/><path d="M-40 148Q190 92 350 180T680 131"/><path d="M-40 155Q190 105 350 185T680 145"/><path d="M-40 162Q190 118 350 190T680 159"/><path d="M-40 169Q190 131 350 195T680 173"/><path d="M-40 176Q190 144 350 200T680 187"/><path d="M-40 183Q190 157 350 205T680 201"/><path d="M-40 190Q190 170 350 210T680 215"/><path d="M-40 197Q190 183 350 215T680 229"/><path d="M-40 204Q190 196 350 220T680 243"/><path d="M-40 211Q190 209 350 225T680 257"/><path d="M-40 218Q190 222 350 230T680 271"/><path d="M-40 225Q190 235 350 235T680 285"/><path d="M-40 232Q190 248 350 240T680 299"/><path d="M-40 239Q190 261 350 245T680 313"/></g><circle cx="485" cy="584" r="81" fill="#e6dbc7"/><circle cx="514" cy="560" r="76" fill="#163b37"/>
+<g fill="#f0e9d6"><text x="42" y="52" font-family="Arial,sans-serif" font-size="13" letter-spacing="3">TICKETING / LIVE CONCERT</text>
+<text x="42" y="420" font-size="88" font-family="Georgia,serif" font-weight="700" letter-spacing="-3">AURORA</text>
+<text x="44" y="503" font-family="Arial,sans-serif" font-size="17" letter-spacing="2">A VOICE THROUGH THE NIGHT</text>
+<path d="M42 718H558" stroke="#f0e9d6" stroke-width="1"/>
+<text x="42" y="750" font-family="Arial,sans-serif" font-size="11" letter-spacing="2">LIVE PERFORMANCE / BE THERE.</text>
+<text x="558" y="750" text-anchor="end" font-family="Arial,sans-serif" font-size="11">LIVE CONCERT</text></g></svg>

@@ -1,0 +1,126 @@
+# =============================================================================
+# 관측성 스택 — OTel Collector + LGTM (Loki, Grafana, Tempo, Mimir)
+# -----------------------------------------------------------------------------
+# 핵심 compose와 분리해 둠으로써:
+#   - 가벼운 검증할 때는 메인만 띄울 수 있음.
+#   - Makefile은 항상 두 파일을 합쳐 실행.
+#
+# 데이터 흐름:
+#   백엔드 ─OTLP─▶ otel-collector ─┬─▶ loki   (logs)
+#                                  ├─▶ tempo  (traces)
+#                                  └─▶ mimir  (metrics, Prometheus remote_write)
+#                                          ▲
+#                                       grafana (provisioning으로 자동 등록)
+# =============================================================================
+
+volumes:
+  loki-data:
+  tempo-data:
+  mimir-data:
+  grafana-data:
+
+services:
+  # ---------------------------------------------------------------------------
+  # OpenTelemetry Collector
+  # ---------------------------------------------------------------------------
+  # 백엔드 SDK는 OTLP/gRPC(4317) 또는 HTTP(4318)로 여기로 보낸다.
+  # contrib 이미지가 Loki/Tempo/Mimir exporter 포함.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.106.0
+    container_name: ticketing-otel-collector
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "${OTEL_GRPC_PORT:-4317}:4317"   # OTLP gRPC
+      - "${OTEL_HTTP_PORT:-4318}:4318"   # OTLP HTTP
+    depends_on:
+      - loki
+      - tempo
+      - mimir
+    networks: [ticketing-net]
+
+  # ---------------------------------------------------------------------------
+  # Loki — 로그 저장소
+  # ---------------------------------------------------------------------------
+  loki:
+    image: grafana/loki:3.1.0
+    container_name: ticketing-loki
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/config.yaml"]
+    volumes:
+      - ./loki-config.yaml:/etc/loki/config.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    networks: [ticketing-net]
+
+  # ---------------------------------------------------------------------------
+  # Tempo — 분산 트레이스 저장소
+  # ---------------------------------------------------------------------------
+  tempo:
+    image: grafana/tempo:2.5.0
+    container_name: ticketing-tempo
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo/config.yaml"]
+    volumes:
+      - ./tempo-config.yaml:/etc/tempo/config.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "${TEMPO_HTTP_PORT:-3200}:3200"  # Tempo HTTP query
+      - "${TEMPO_GRPC_PORT:-9095}:9095"  # Tempo gRPC (OTel → Tempo)
+    networks: [ticketing-net]
+
+  # ---------------------------------------------------------------------------
+  # Mimir — Prometheus 호환 메트릭 저장소
+  # ---------------------------------------------------------------------------
+  mimir:
+    image: grafana/mimir:2.13.0
+    container_name: ticketing-mimir
+    restart: unless-stopped
+    command: ["-config.file=/etc/mimir/config.yaml"]
+    volumes:
+      - ./mimir-config.yaml:/etc/mimir/config.yaml:ro
+      - mimir-data:/data
+    ports:
+      - "${MIMIR_PORT:-9009}:9009"
+    networks: [ticketing-net]
+
+  # ---------------------------------------------------------------------------
+  # Grafana
+  # ---------------------------------------------------------------------------
+  # provisioning 디렉터리를 마운트해 데이터소스/대시보드를 코드로 관리.
+  # 기본 로그인 admin/admin (.env로 덮어쓸 수 있음).
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: ticketing-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      # 익명 접근 끔. 데모할 때 비번 보여주면 됨.
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # provisioning에서 등록한 데이터소스/대시보드는 UI에서 수정 잠금 해제.
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/kpi.json
+      # 플러그인 자동 설치 자리.
+      GF_INSTALL_PLUGINS: ""
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana-provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana-provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      - loki
+      - tempo
+      - mimir
+    networks: [ticketing-net]
+
+# 네트워크는 메인 compose에서 만든 것을 그대로 참조 — external: true.
+# (두 파일을 -f로 합치면 같은 networks 블록을 공유하기에 사실은 external 선언이 없어도 되지만,
+#  명시해두면 lgtm 파일 단독으로 띄울 때 혼동을 줄임.)
+networks:
+  ticketing-net:
+    name: ticketing_ticketing-net
+    external: false

@@ -1,0 +1,12 @@
+# =============================================================================
+# 네임스페이스 — 백엔드 / 관측성 / 데이터 계층을 묶을 그릇.
+# 운영에선 셋을 분리하지만, 데모 한정 단일 ns로 단순화.
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ticketing
+  labels:
+    app.kubernetes.io/name: ticketing
+    app.kubernetes.io/part-of: ticketing-platform
+    environment: local

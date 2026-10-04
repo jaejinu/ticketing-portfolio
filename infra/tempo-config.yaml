@@ -1,0 +1,51 @@
+# =============================================================================
+# Tempo — 분산 트레이스 저장소 (single-binary)
+# -----------------------------------------------------------------------------
+# OTel Collector가 OTLP gRPC로 push → Tempo에서 trace_id로 조회.
+# =============================================================================
+
+stream_over_http_enabled: true
+
+server:
+  http_listen_port: 3200
+  log_level: warn
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        http:
+          endpoint: 0.0.0.0:4318
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+ingester:
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 24h  # 로컬에서 1일치만 유지 — 디스크 절약.
+
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+      cluster: ticketing-local
+  storage:
+    path: /var/tempo/generator/wal
+    remote_write:
+      - url: http://mimir:9009/api/v1/push
+        send_exemplars: true
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [service-graphs, span-metrics]

@@ -1,0 +1,387 @@
+{
+  "uid": "ticketing-kpi",
+  "title": "Ticketing — KPI Overview",
+  "description": "README KPI 와 1:1 매핑되는 실측 패널. 모든 expr 은 백엔드가 실제로 발행하는 메트릭만 사용 (2026-07-30 실데이터 검증).",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "title": "좌석 락 획득 p95 (KPI < 500ms)",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(seat_lock_acquire_duration_milliseconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "title": "결제 PG 호출 p95 (KPI < 3s)",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(payment_pg_call_duration_milliseconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "알람 평가 사이클 p99 (KPI < 10ms)",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.99, sum(rate(alert_eval_tick_duration_milliseconds_bucket[5m])) by (le))",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "좌석 hold — 생성 vs 충돌 (중복판매 0 의 실시간 증거)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(seat_holds_created_total[1m])) * 60",
+          "legendFormat": "created/min"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(seat_holds_conflicts_total[1m])) * 60",
+          "legendFormat": "conflicts/min (분산락 방어)"
+        },
+        {
+          "refId": "C",
+          "expr": "seat_holds_active",
+          "legendFormat": "active holds"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "결제 결과 — 승인/실패/멱등 재생",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(payment_approved_total[1m])) * 60",
+          "legendFormat": "approved/min"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(payment_failed_total[1m])) * 60",
+          "legendFormat": "failed/min (mock-pg 5% 시뮬)"
+        },
+        {
+          "refId": "C",
+          "expr": "sum(rate(payment_idempotent_replay_total[1m])) * 60",
+          "legendFormat": "idempotent replay/min"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "가상 대기열 — 대기 인원 / 유입 / 입장",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(queue_waiting_size)",
+          "legendFormat": "waiting (전 회차 합)"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(queue_enqueued_total[1m])) * 60",
+          "legendFormat": "enqueued/min"
+        },
+        {
+          "refId": "C",
+          "expr": "sum(rate(queue_admitted_total[1m])) * 60",
+          "legendFormat": "admitted/min (admit-rate 50/s 상한)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "title": "봇 방어 — 레이트리밋/매크로 차단",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(queue_ratelimit_blocked_total[1m])) * 60",
+          "legendFormat": "429 rate-limited/min"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(queue_macro_blocked_requests_total[1m])) * 60",
+          "legendFormat": "403 macro-blocked/min"
+        },
+        {
+          "refId": "C",
+          "expr": "sum(rate(queue_ratelimit_allowed_total[1m])) * 60",
+          "legendFormat": "allowed/min"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "title": "가격 틱 파이프라인 — 생산량 / 스케줄러 지연",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 22
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(pricing_ticks_produced_total[1m])) * 60",
+          "legendFormat": "ticks/min (ON_SALE 구역수 × 60 기대)"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum(rate(pricing_scheduler_cycle_duration_milliseconds_bucket[5m])) by (le))",
+          "legendFormat": "cycle p95 (ms)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 9,
+      "title": "Outbox — 발행/재시도/격리 (Kafka 단절 시 재시도가 치솟는다)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 22
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(app_outbox_published_total[1m])) * 60",
+          "legendFormat": "published/min"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(app_outbox_retried_total[1m])) * 60",
+          "legendFormat": "retried/min"
+        },
+        {
+          "refId": "C",
+          "expr": "sum(rate(app_outbox_failed_total[1m])) * 60",
+          "legendFormat": "quarantined/min"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 10,
+      "title": "WS 팬아웃 — STOMP 연결 수락/거부, 메시지/중복스킵",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 30
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(ws_bridge_fanout_sent_total[1m])) * 60",
+          "legendFormat": "fanout msgs/min"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(ws_bridge_dedup_skipped_total[1m])) * 60",
+          "legendFormat": "dedup skipped/min"
+        },
+        {
+          "refId": "C",
+          "expr": "sum(rate(ws_bridge_stomp_connect_rejected_total[1m])) * 60",
+          "legendFormat": "connect rejected/min (무토큰)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 11,
+      "title": "알람 — 평가량 / 트리거 / 채널 발송·quota",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "mimir"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 30
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(alert_evaluated_total[1m])) * 60",
+          "legendFormat": "evaluated/min"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(alert_triggered_total[1m])) * 60",
+          "legendFormat": "triggered/min"
+        },
+        {
+          "refId": "C",
+          "expr": "sum(rate(alert_quota_exceeded_total[1m])) * 60",
+          "legendFormat": "quota exceeded/min"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    }
+  ],
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  }
+}

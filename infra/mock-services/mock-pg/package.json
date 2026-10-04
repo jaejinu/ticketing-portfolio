@@ -1,0 +1,13 @@
+{
+  "name": "mock-pg",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Payment gateway mock with realistic failure distribution",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

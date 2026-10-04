@@ -1,0 +1,45 @@
+# =============================================================================
+# k3d 클러스터 정의 — `k3d cluster create --config k3d-config.yaml`
+# -----------------------------------------------------------------------------
+# 시연용 단일 노드 k3s 클러스터. 백엔드 차트가 여기서도 동작함을 보여주는 게 목적.
+# 멀티 노드/이그레스/스토리지 클래스 등 본격 운영 세팅은 범위 밖.
+# =============================================================================
+
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: ticketing
+
+servers: 1
+agents: 1
+
+# 호스트 포트 → 클러스터 LB 포트 매핑.
+# Traefik LB(80)을 호스트 18080으로 노출 — docker-compose의 grafana(3000)와 안 겹치게.
+ports:
+  - port: 18080:80
+    nodeFilters:
+      - loadbalancer
+  - port: 18443:443
+    nodeFilters:
+      - loadbalancer
+
+# 클러스터에 사전 로드할 레지스트리 (현재는 없음). 로컬 빌드 이미지 import는 bootstrap.sh에서.
+registries:
+  create:
+    name: ticketing-registry
+    host: "0.0.0.0"
+    hostPort: "5050"
+
+options:
+  k3d:
+    wait: true
+    timeout: "120s"
+    disableLoadbalancer: false
+  k3s:
+    # ServiceLB(Klipper)는 켜 둔다 — Traefik 의 Service(type=LoadBalancer)가
+    # 노드 80/443 을 받으려면 필요하다. 끄면 EXTERNAL-IP 가 <pending> 으로 남아
+    # k3d serverlb(호스트 18080→노드 80) 경로가 빈 응답만 돌려준다 (실측).
+    extraArgs: []
+  kubeconfig:
+    updateDefaultKubeconfig: true
+    switchCurrentContext: true

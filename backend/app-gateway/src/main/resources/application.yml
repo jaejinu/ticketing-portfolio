@@ -1,0 +1,61 @@
+# =============================================================================
+# application.yml — 기본 설정 (모든 프로파일 공통)
+# -----------------------------------------------------------------------------
+# 환경별 차이는 application-{local|test}.yml 에서 override.
+# 운영 차이가 있는 키는 ${ENV_VAR:default} 로 외부화한다.
+# =============================================================================
+spring:
+  application:
+    name: ticketing-backend
+
+  # 기본 프로파일은 local. JAR 실행 시 SPRING_PROFILES_ACTIVE=prod 등으로 덮어쓴다.
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+
+  # Flyway locations 통합: 각 모듈의 src/main/resources/db/migration 을 모두 묶는다.
+  # ws-bridge 는 DB 마이그레이션이 없을 수 있으나 location 자체가 비어도 무해.
+  flyway:
+    enabled: true
+    locations:
+      - classpath:db/migration                              # 폴백 (app-gateway 자체)
+      - classpath:db/migration                              # 같은 경로지만 모듈별 jar 안에 동일 경로로 들어와 모두 머지된다
+    # 위 두 라인이 동일해 보이지만 의도가 다르다:
+    #   Flyway 는 location 1개당 모든 classpath 하위 동일 경로를 통합 스캔하므로,
+    #   `classpath:db/migration` 한 줄로 11개 모듈의 db/migration 디렉터리가 모두 포함된다.
+    #   중복 V001__ prefix 가 모듈 간에 겹치지 않도록 모듈별 파일명을 V001__<module>.sql 로 분리해 두었다.
+    baseline-on-migrate: true
+
+  # JPA 는 ddl-auto=validate 가 안전. 스키마는 Flyway 가 관리.
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+
+# -----------------------------------------------------------------------------
+# 서버 포트: REST/WebSocket 은 8088(로컬 기본, 컨테이너/k3d 는 SERVER_PORT=8080), Actuator 는 8081 로 분리.
+# 운영 메트릭 트래픽이 비즈니스 트래픽에 영향 주지 않도록.
+# -----------------------------------------------------------------------------
+server:
+  # 기본 8080 이 다른 dev 컨테이너에 점유돼 8088 로 우회. 환경변수로 override 가능.
+  # (8090 도 다른 dev 컨테이너 점유 — 8088 이 비어있어 선택)
+  port: ${SERVER_PORT:8088}
+
+management:
+  server:
+    port: 8081
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+  metrics:
+    tags:
+      application: ticketing-backend
+  tracing:
+    sampling:
+      probability: 1.0  # 포트폴리오 단계는 100% 샘플링, 운영 단계 0.1 로 조정 권장

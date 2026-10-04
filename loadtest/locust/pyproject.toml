@@ -1,0 +1,40 @@
+# =============================================================================
+# Locust 봇/매크로 시나리오 — Python 패키지 설정
+# -----------------------------------------------------------------------------
+# 의도:
+#   - `pip install -e .` 한 줄로 locust + faker + requests 까지 깔린다.
+#   - venv 안에서 격리 실행하면 시스템 Python 을 오염시키지 않음.
+# =============================================================================
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ticketing-loadtest-locust"
+version = "0.1.0"
+description = "Locust scenarios for bot/macro pattern simulation against the ticketing platform."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "ticketing portfolio", email = "39123186+jaejinu@users.noreply.github.com" }]
+
+dependencies = [
+    # Locust 2.31 — 2024 안정 라인. FastHttpUser, web UI 모두 사용.
+    "locust>=2.31,<2.32",
+    # Faker — 봇 패턴이 그럴듯한 가짜 이메일/이름/이벤트 시간을 만들 때.
+    "faker>=26.0",
+    # requests — Locust 외부에서 1회성 헬퍼 호출(예: 사전 로그인)에.
+    "requests>=2.32",
+]
+
+[project.optional-dependencies]
+# 분산 모드에서 master/worker 간 통신을 더 빠르게 하려면 pyzmq 권장.
+distributed = ["pyzmq>=26.0"]
+# 개발자 편의 (선택). 실제 시나리오 동작엔 영향 없음.
+dev = ["ruff>=0.6", "mypy>=1.11"]
+
+[tool.setuptools]
+# 패키지가 아니라 스크립트 모음에 가깝지만, patterns/ 를 import 할 수 있도록
+# 가벼운 패키지 등록을 해 둔다.
+packages = ["patterns"]

@@ -1,0 +1,26 @@
+# shows.csv — Gatling feeder 용 공연 회차(schedule) 후보
+# -----------------------------------------------------------------------------
+# 형식: showScheduleId,showTitle,seatCount
+#   - showScheduleId  : 백엔드 DB seed 가 만들어내는 회차 ID 와 1:1 매칭.
+#   - showTitle       : 리포트 가독성 용. 로직엔 영향 없음.
+#   - seatCount       : 좌석 분포 단순화 — Phase 3 시나리오에서 랜덤
+#                       seat index 를 [1, seatCount] 범위에서 뽑을 때 사용.
+#
+# 사용 예:
+#   val shows = csv("data/shows.csv").random
+#   scenario(...).feed(shows)
+#     .exec(http("seat map").get("/shows/#{showScheduleId}/seats"))
+#
+# 시드 데이터와 어긋나면 모든 hold 가 404 로 떨어진다 — 백엔드 seed 변경 시
+# 이 파일도 같이 갱신할 것.
+showScheduleId,showTitle,seatCount
+1001,IU-2026-Seoul-D1,12000
+1002,IU-2026-Seoul-D2,12000
+1003,BTS-Reunion-D1,20000
+1004,BTS-Reunion-D2,20000
+1005,Coldplay-Tour-Seoul,40000
+1006,LCK-Finals,18000
+1007,Musical-Phantom-Mat,1800
+1008,Musical-Phantom-Eve,1800
+1009,Classical-Lang-Lang,2200
+1010,Stand-up-YooJaeSuk,3500

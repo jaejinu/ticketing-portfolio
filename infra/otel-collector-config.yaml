@@ -1,0 +1,85 @@
+# =============================================================================
+# OpenTelemetry Collector — 백엔드 → LGTM 라우팅
+# -----------------------------------------------------------------------------
+# 3가지 신호(logs/traces/metrics)를 한 곳에서 받아 적절한 백엔드로 보낸다.
+#
+# 섹션 의미:
+#   receivers  — "어디서 데이터를 받느냐". OTLP 두 가지 프로토콜.
+#   processors — "받은 데이터를 어떻게 가공하느냐". 배치/메모리 한계 등.
+#   exporters  — "어디로 보내느냐". Loki/Tempo/Mimir 각각.
+#   service    — receivers → processors → exporters 파이프라인 연결.
+# =============================================================================
+
+receivers:
+  # OTLP: 백엔드 SDK가 표준으로 쓰는 프로토콜.
+  # gRPC = 효율, HTTP = 디버깅/방화벽 친화. 둘 다 열어둠.
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # batch: 작은 요청을 모아 한 번에 보냄 — 백엔드 부하 감소.
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+  # memory_limiter: 메모리 폭주 방지. 백엔드 SDK가 폭발적으로 데이터를 쏘는 사고 대비.
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+
+  # resource: 모든 텔레메트리에 공통 라벨 추가 — Grafana에서 필터링 편리.
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: local
+        action: upsert
+
+exporters:
+  # Loki: HTTP push 엔드포인트.
+  # 0.106 contrib에는 "loki" exporter가 있음. 라벨링은 promtail보다 단순.
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+    default_labels_enabled:
+      exporter: false
+      job: true
+
+  # Tempo: OTLP gRPC로 그대로 전달. Tempo가 OTLP를 네이티브로 받음.
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Mimir: Prometheus remote_write 인터페이스.
+  prometheusremotewrite:
+    endpoint: http://mimir:9009/api/v1/push
+    tls:
+      insecure: true
+    # 외부에서 들어온 메트릭에 _total 등 누락된 접미사 자동 보정 안 함 — 백엔드 SDK 책임.
+
+  # 디버깅 — 콜렉터 로그에 텔레메트리 일부 찍어보기 (필요 시 service에 추가).
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resource]
+      exporters: [otlp/tempo]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resource]
+      exporters: [prometheusremotewrite]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resource]
+      exporters: [loki]
+
+  telemetry:
+    logs:
+      level: info

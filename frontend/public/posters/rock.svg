@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800" role="img" aria-labelledby="title">
+<title id="title">RIOT WAVE — TURN IT ALL THE WAY UP</title>
+<rect width="600" height="800" fill="#e85d32"/>
+<path d="M0 115L600 45V190L0 260ZM0 603L600 530V662L0 735Z" fill="#191c1b"/><path d="M50 143L490 96L422 172L563 128M80 659L490 577L380 665L565 602" fill="none" stroke="#e8dfcc" stroke-width="8"/>
+<g fill="#191c1b"><text x="42" y="52" font-family="Arial,sans-serif" font-size="13" letter-spacing="3">TICKETING / ROCK</text>
+<text x="42" y="378" font-size="102" font-family="Arial,sans-serif" font-weight="700" letter-spacing="-3">RIOT</text><text x="42" y="456" font-size="102" font-family="Arial,sans-serif" font-weight="700" letter-spacing="-3">WAVE</text>
+<text x="44" y="539" font-family="Arial,sans-serif" font-size="17" letter-spacing="2">TURN IT ALL THE WAY UP</text>
+<path d="M42 718H558" stroke="#191c1b" stroke-width="1"/>
+<text x="42" y="750" font-family="Arial,sans-serif" font-size="11" letter-spacing="2">LIVE PERFORMANCE / BE THERE.</text>
+<text x="558" y="750" text-anchor="end" font-family="Arial,sans-serif" font-size="11">ROCK</text></g></svg>

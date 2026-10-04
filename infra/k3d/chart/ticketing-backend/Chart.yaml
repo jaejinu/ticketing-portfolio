@@ -1,0 +1,13 @@
+# =============================================================================
+# ticketing-backend Helm 차트
+# -----------------------------------------------------------------------------
+# 모듈러 모놀리스 백엔드(app-gateway)를 k3s 에 배포한다.
+# 데이터 계층(Timescale/Redis/Kafka)은 호스트 docker-compose 를 그대로 쓰고
+# host.k3d.internal 로 접속 — 차트의 관심사를 "앱 배포" 하나로 유지 (ADR-0004).
+# =============================================================================
+apiVersion: v2
+name: ticketing-backend
+description: 다이나믹 프라이싱 티켓팅 백엔드 (Spring Boot 모듈러 모놀리스)
+type: application
+version: 0.1.0
+appVersion: "0.0.1"
