@@ -1,5 +1,7 @@
 # Ticketing — 다이나믹 프라이싱 예매 플랫폼
 
+[![Frontend quality](https://github.com/jaejinu/ticketing-portfolio/actions/workflows/frontend.yml/badge.svg)](https://github.com/jaejinu/ticketing-portfolio/actions/workflows/frontend.yml)
+
 수요에 따라 가격이 변하는 공연 예매를 구현한 포트폴리오 프로젝트입니다. **좌석 확보 시점의 가격을 결제까지 고정**하고, 좌석 경합·연결 끊김·결제 결과 지연에서도 사용자가 예매를 이어갈 수 있도록 설계했습니다.
 
 Java 17 · Spring Boot 3 · Next.js 16 · TypeScript · Redis · Kafka · TimescaleDB
