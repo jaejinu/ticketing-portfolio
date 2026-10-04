@@ -1,0 +1,322 @@
+{
+  "scannedAt": "2026-10-04T22:38:02.656874+00:00",
+  "scanner": {
+    "Version": "0.75.0",
+    "VulnerabilityDB": {
+      "Version": 2,
+      "NextUpdate": "2026-10-05T19:39:34.715623193Z",
+      "UpdatedAt": "2026-10-04T19:39:34.715623444Z",
+      "DownloadedAt": "2026-10-04T22:34:25.412139Z"
+    },
+    "JavaDB": {
+      "Version": 1,
+      "NextUpdate": "2026-10-07T01:44:08.185724764Z",
+      "UpdatedAt": "2026-10-04T01:44:08.185725365Z",
+      "DownloadedAt": "2026-10-04T22:36:27.210765Z"
+    }
+  },
+  "scope": "Running Compose image IDs; OS and bundled language packages. Findings are package/advisory matches, not proven exploits.",
+  "images": [
+    {
+      "service": "fcm-mock",
+      "image": "ticketing-fcm-mock",
+      "imageId": "sha256:6e4556fc5527284e215212b1d58f5e739195af83211d6bf91e37f802c652f275",
+      "os": {
+        "Family": "alpine",
+        "Name": "3.24.2"
+      },
+      "counts": {},
+      "byClass": {
+        "os-pkgs": {},
+        "lang-pkgs": {}
+      },
+      "matches": 0
+    },
+    {
+      "service": "mock-pg",
+      "image": "ticketing-mock-pg",
+      "imageId": "sha256:ac90584efaa25769cf1a362928cd936ae5a26ce36266b2c1e01f0efb0b3007f7",
+      "os": {
+        "Family": "alpine",
+        "Name": "3.24.2"
+      },
+      "counts": {},
+      "byClass": {
+        "os-pkgs": {},
+        "lang-pkgs": {}
+      },
+      "matches": 0
+    },
+    {
+      "service": "grafana",
+      "image": "grafana/grafana:11.2.0",
+      "imageId": "sha256:408afb9726de5122b00a2576763a8a57a3c86d5b0eff5305bc994ceb3eb96c3f",
+      "os": {
+        "Family": "alpine",
+        "Name": "3.19.1",
+        "EOSL": true
+      },
+      "counts": {
+        "MEDIUM": 173,
+        "LOW": 46,
+        "HIGH": 118,
+        "CRITICAL": 9,
+        "UNKNOWN": 4
+      },
+      "byClass": {
+        "os-pkgs": {
+          "MEDIUM": 33,
+          "LOW": 27,
+          "HIGH": 6
+        },
+        "lang-pkgs": {
+          "MEDIUM": 140,
+          "HIGH": 112,
+          "LOW": 19,
+          "CRITICAL": 9,
+          "UNKNOWN": 4
+        }
+      },
+      "matches": 350
+    },
+    {
+      "service": "otel-collector",
+      "image": "otel/opentelemetry-collector-contrib:0.106.0",
+      "imageId": "sha256:e6ffd616a0da864cbb625969c5ed87e1b5b7435084298d618c79cd349483076a",
+      "os": null,
+      "counts": {
+        "LOW": 14,
+        "MEDIUM": 71,
+        "HIGH": 73,
+        "CRITICAL": 8,
+        "UNKNOWN": 2
+      },
+      "byClass": {
+        "os-pkgs": {},
+        "lang-pkgs": {
+          "LOW": 14,
+          "MEDIUM": 71,
+          "HIGH": 73,
+          "CRITICAL": 8,
+          "UNKNOWN": 2
+        }
+      },
+      "matches": 168
+    },
+    {
+      "service": "postgres",
+      "image": "timescale/timescaledb:2.16.1-pg16",
+      "imageId": "sha256:3adf01543c37b5b88d3c4998338e0f7f21cb3cdd02bbddea08b09bf60e2289b7",
+      "os": {
+        "Family": "alpine",
+        "Name": "3.20.2",
+        "EOSL": true
+      },
+      "counts": {
+        "MEDIUM": 210,
+        "LOW": 52,
+        "CRITICAL": 13,
+        "HIGH": 239,
+        "UNKNOWN": 3
+      },
+      "byClass": {
+        "os-pkgs": {
+          "MEDIUM": 78,
+          "LOW": 41,
+          "CRITICAL": 5,
+          "HIGH": 122
+        },
+        "lang-pkgs": {
+          "CRITICAL": 8,
+          "MEDIUM": 132,
+          "HIGH": 117,
+          "UNKNOWN": 3,
+          "LOW": 11
+        }
+      },
+      "matches": 517
+    },
+    {
+      "service": "mimir",
+      "image": "grafana/mimir:2.13.0",
+      "imageId": "sha256:8bdec4684b1a8011d5f5f7710fcfd89c42139b181978325b65747e47376f40d7",
+      "os": {
+        "Family": "debian",
+        "Name": "12.6"
+      },
+      "counts": {
+        "UNKNOWN": 3,
+        "HIGH": 48,
+        "MEDIUM": 52,
+        "CRITICAL": 2,
+        "LOW": 4
+      },
+      "byClass": {
+        "os-pkgs": {
+          "UNKNOWN": 1
+        },
+        "lang-pkgs": {
+          "HIGH": 48,
+          "MEDIUM": 52,
+          "UNKNOWN": 2,
+          "CRITICAL": 2,
+          "LOW": 4
+        }
+      },
+      "matches": 109
+    },
+    {
+      "service": "redis",
+      "image": "redis:7.4-alpine",
+      "imageId": "sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+      "os": {
+        "Family": "alpine",
+        "Name": "3.21.8"
+      },
+      "counts": {
+        "HIGH": 4,
+        "MEDIUM": 14,
+        "LOW": 2
+      },
+      "byClass": {
+        "os-pkgs": {
+          "HIGH": 4,
+          "MEDIUM": 14,
+          "LOW": 2
+        },
+        "lang-pkgs": {}
+      },
+      "matches": 20
+    },
+    {
+      "service": "loki",
+      "image": "grafana/loki:3.1.0",
+      "imageId": "sha256:d947e68a84d9e44915dfa08c3bec27e2124efd5ba6c83443eb53578101ec69e3",
+      "os": {
+        "Family": "alpine",
+        "Name": "3.18.5",
+        "EOSL": true
+      },
+      "counts": {
+        "MEDIUM": 73,
+        "HIGH": 55,
+        "LOW": 18,
+        "UNKNOWN": 2,
+        "CRITICAL": 3
+      },
+      "byClass": {
+        "os-pkgs": {
+          "MEDIUM": 16,
+          "HIGH": 4,
+          "LOW": 14
+        },
+        "lang-pkgs": {
+          "MEDIUM": 57,
+          "HIGH": 51,
+          "LOW": 4,
+          "UNKNOWN": 2,
+          "CRITICAL": 3
+        }
+      },
+      "matches": 151
+    },
+    {
+      "service": "tempo",
+      "image": "grafana/tempo:2.5.0",
+      "imageId": "sha256:f0200a9bff6d14eb3a4332194f7b77c37ee1a3535e7e41db024d95aab6f1b4e8",
+      "os": {
+        "Family": "alpine",
+        "Name": "3.20.0",
+        "EOSL": true
+      },
+      "counts": {
+        "MEDIUM": 88,
+        "LOW": 35,
+        "CRITICAL": 5,
+        "HIGH": 84,
+        "UNKNOWN": 2
+      },
+      "byClass": {
+        "os-pkgs": {
+          "MEDIUM": 20,
+          "LOW": 27,
+          "CRITICAL": 2,
+          "HIGH": 21
+        },
+        "lang-pkgs": {
+          "MEDIUM": 68,
+          "HIGH": 63,
+          "LOW": 8,
+          "UNKNOWN": 2,
+          "CRITICAL": 3
+        }
+      },
+      "matches": 214
+    },
+    {
+      "service": "kafka",
+      "image": "bitnamilegacy/kafka:3.7.1",
+      "imageId": "sha256:c274f870840a5d854fb601408c398e596c795582d869b5d85c7f7d882e5c478d",
+      "os": {
+        "Family": "debian",
+        "Name": "12.8"
+      },
+      "counts": {
+        "LOW": 197,
+        "HIGH": 203,
+        "MEDIUM": 320,
+        "UNKNOWN": 10,
+        "CRITICAL": 20
+      },
+      "byClass": {
+        "os-pkgs": {
+          "LOW": 189,
+          "HIGH": 132,
+          "MEDIUM": 241,
+          "UNKNOWN": 8,
+          "CRITICAL": 17
+        },
+        "lang-pkgs": {
+          "HIGH": 71,
+          "MEDIUM": 79,
+          "CRITICAL": 3,
+          "LOW": 8,
+          "UNKNOWN": 2
+        }
+      },
+      "matches": 750
+    },
+    {
+      "service": "mailhog",
+      "image": "mailhog/mailhog:latest",
+      "imageId": "sha256:8d76a3d4ffa32a3661311944007a415332c4bb855657f4f6c57996405c009bea",
+      "os": {
+        "Family": "alpine",
+        "Name": "3.12.0",
+        "EOSL": true
+      },
+      "counts": {
+        "CRITICAL": 109,
+        "HIGH": 1397,
+        "MEDIUM": 1228,
+        "LOW": 86
+      },
+      "byClass": {
+        "os-pkgs": {
+          "CRITICAL": 4,
+          "HIGH": 32,
+          "MEDIUM": 10,
+          "LOW": 2
+        },
+        "lang-pkgs": {
+          "CRITICAL": 105,
+          "HIGH": 1365,
+          "MEDIUM": 1218,
+          "LOW": 84
+        }
+      },
+      "matches": 2820
+    }
+  ],
+  "totalMatches": 5099
+}
