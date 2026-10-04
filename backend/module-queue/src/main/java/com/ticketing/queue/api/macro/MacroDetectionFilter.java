@@ -56,13 +56,15 @@ public class MacroDetectionFilter extends OncePerRequestFilter {
     private final MacroDetectionService service;
     private final QueueProperties.MacroDetection props;
     private final ObjectMapper objectMapper;
+    private final RequestScope requestScope;
 
     public MacroDetectionFilter(MacroDetectionService service,
                                 QueueProperties.MacroDetection props,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper, RequestScope requestScope) {
         this.service = service;
         this.props = props;
         this.objectMapper = objectMapper;
+        this.requestScope = requestScope;
     }
 
     @Override
@@ -76,7 +78,7 @@ public class MacroDetectionFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
 
-        RequestScope.Resolved resolved = RequestScope.resolve(request);
+        RequestScope.Resolved resolved = requestScope.resolve(request);
         String scope = resolved.scope();
         String key = resolved.key();
 

@@ -1,0 +1,43 @@
+name: Backend quality
+
+on:
+  pull_request:
+    paths: ['backend/**', 'scripts/audit-backend.py', '.github/workflows/backend.yml']
+  push:
+    branches: [main]
+    paths: ['backend/**', 'scripts/audit-backend.py', '.github/workflows/backend.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build and test backend (isolated Testcontainers)
+        working-directory: backend
+        run: ./gradlew --no-daemon test :app-gateway:bootJar -I dependency-audit.init.gradle exportAuditDependencies
+      - name: Audit resolved runtime dependencies
+        run: python3 scripts/audit-backend.py
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: backend-security-tests
+          path: |
+            backend/**/build/reports/tests/
+            backend/build/audit/
+          retention-days: 7

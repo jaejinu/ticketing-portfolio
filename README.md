@@ -1,6 +1,7 @@
 # Ticketing — 다이나믹 프라이싱 예매 플랫폼
 
 [![Frontend quality](https://github.com/jaejinu/ticketing-portfolio/actions/workflows/frontend.yml/badge.svg)](https://github.com/jaejinu/ticketing-portfolio/actions/workflows/frontend.yml)
+[![Backend quality](https://github.com/jaejinu/ticketing-portfolio/actions/workflows/backend.yml/badge.svg)](https://github.com/jaejinu/ticketing-portfolio/actions/workflows/backend.yml)
 
 수요에 따라 가격이 변하는 공연 예매를 구현한 포트폴리오 프로젝트입니다. **좌석 확보 시점의 가격을 결제까지 고정**하고, 좌석 경합·연결 끊김·결제 결과 지연에서도 사용자가 예매를 이어갈 수 있도록 설계했습니다.
 
@@ -115,6 +116,7 @@ flowchart LR
 - [프론트엔드 디자인 시스템·상태 설계·테스트 가이드](frontend/README.md)
 - [Saga 선택](docs/adr/0001-saga-vs-2pc.md) · [Outbox 방식](docs/adr/0002-outbox-polling-vs-debezium.md)
 - [Mock 서비스와 k3d 범위](docs/adr/0004-mock-fcm-smtp-and-k3d-scope.md)
-- [공개 범위와 보안 점검 기록](SECURITY.md)
+- [공개 범위와 보안 점검 기록](SECURITY.md) · [백엔드 의존성·요청 제한 보강](docs/security-audit.md)
+- [폰트·이미지 출처와 라이선스 범위](THIRD_PARTY.md)
 
 이 저장소는 포트폴리오 검토와 로컬 시연을 위한 코드입니다. 별도의 오픈소스 라이선스는 아직 지정하지 않았습니다.

@@ -248,7 +248,7 @@ function BlockSection({
               <div className="min-w-0 space-y-0.5">
                 <div className="flex items-center gap-2">
                   <ScopeBadge scope={b.scope} />
-                  {/* user 스코프의 key 는 토큰 해시(64자) — truncate 로 한 줄 유지 */}
+                  {/* user 스코프의 key 는 검증된 사용자 UUID — truncate 로 한 줄 유지 */}
                   <code className="truncate text-xs" title={b.key}>
                     {b.key}
                   </code>

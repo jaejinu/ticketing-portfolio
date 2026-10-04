@@ -85,7 +85,7 @@ Kafka 이벤트로 통신하는 게 원칙 — 예외적으로 queue/pricing 이
 [사용자]  공연 상세에서 "예매하기"
    │
    ▼ ① 대기열      POST /api/v1/queue/enqueue
-   │   RateLimitFilter(60/min per-IP) → MacroDetectionFilter(간격 균일성 점수)
+   │   RateLimitFilter(검증된 사용자 UUID / 직접 연결 IP) → MacroDetectionFilter(간격 균일성 점수)
    │   → QueueController → VirtualQueueService.enqueue()   … Redis ZSET, score=now
    │   1초마다 QueueAdmissionScheduler 가 head 50명 admit  … ShedLock 으로 전역 1회
    │

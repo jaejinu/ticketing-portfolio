@@ -90,3 +90,7 @@ infra/k3d/.k3d/
 *.tsbuildinfo
 .env.*
 !.env.example
+
+# Python audit/load-test caches
+__pycache__/
+*.pyc

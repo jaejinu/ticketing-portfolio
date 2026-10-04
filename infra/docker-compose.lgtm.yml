@@ -33,8 +33,8 @@ services:
     volumes:
       - ./otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
     ports:
-      - "${OTEL_GRPC_PORT:-4317}:4317"   # OTLP gRPC
-      - "${OTEL_HTTP_PORT:-4318}:4318"   # OTLP HTTP
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${OTEL_GRPC_PORT:-4317}:4317"   # OTLP gRPC
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${OTEL_HTTP_PORT:-4318}:4318"   # OTLP HTTP
     depends_on:
       - loki
       - tempo
@@ -53,7 +53,7 @@ services:
       - ./loki-config.yaml:/etc/loki/config.yaml:ro
       - loki-data:/loki
     ports:
-      - "${LOKI_PORT:-3100}:3100"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${LOKI_PORT:-3100}:3100"
     networks: [ticketing-net]
 
   # ---------------------------------------------------------------------------
@@ -68,8 +68,8 @@ services:
       - ./tempo-config.yaml:/etc/tempo/config.yaml:ro
       - tempo-data:/var/tempo
     ports:
-      - "${TEMPO_HTTP_PORT:-3200}:3200"  # Tempo HTTP query
-      - "${TEMPO_GRPC_PORT:-9095}:9095"  # Tempo gRPC (OTel → Tempo)
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${TEMPO_HTTP_PORT:-3200}:3200"  # Tempo HTTP query
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${TEMPO_GRPC_PORT:-9095}:9095"  # Tempo gRPC (OTel → Tempo)
     networks: [ticketing-net]
 
   # ---------------------------------------------------------------------------
@@ -84,7 +84,7 @@ services:
       - ./mimir-config.yaml:/etc/mimir/config.yaml:ro
       - mimir-data:/data
     ports:
-      - "${MIMIR_PORT:-9009}:9009"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${MIMIR_PORT:-9009}:9009"
     networks: [ticketing-net]
 
   # ---------------------------------------------------------------------------
@@ -110,7 +110,7 @@ services:
       - ./grafana-provisioning/datasources:/etc/grafana/provisioning/datasources:ro
       - ./grafana-provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
     ports:
-      - "${GRAFANA_PORT:-3000}:3000"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"
     depends_on:
       - loki
       - tempo

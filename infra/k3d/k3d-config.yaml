@@ -16,10 +16,10 @@ agents: 1
 # 호스트 포트 → 클러스터 LB 포트 매핑.
 # Traefik LB(80)을 호스트 18080으로 노출 — docker-compose의 grafana(3000)와 안 겹치게.
 ports:
-  - port: 18080:80
+  - port: 127.0.0.1:18080:80
     nodeFilters:
       - loadbalancer
-  - port: 18443:443
+  - port: 127.0.0.1:18443:443
     nodeFilters:
       - loadbalancer
 
@@ -27,7 +27,7 @@ ports:
 registries:
   create:
     name: ticketing-registry
-    host: "0.0.0.0"
+    host: "127.0.0.1"
     hostPort: "5050"
 
 options:

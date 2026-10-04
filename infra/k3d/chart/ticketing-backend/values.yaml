@@ -14,11 +14,9 @@ image:
   pullPolicy: IfNotPresent
 
 # -----------------------------------------------------------------------------
-# 왜 기본 1 replica 인가:
-#   QueueAdmissionScheduler / PricingScheduler / OutboxPublisher 가 아직
-#   leader election 없이 인스턴스마다 돈다. N개로 늘리면 admit-rate·틱이 N배가
-#   된다 (기능은 동작하나 수치가 왜곡). 멀티 레플리카는 ShedLock/Redisson
-#   leader election 도입 후에 — README "남은 일" 참고.
+# 기본 1 replica는 로컬 자원 절약용. 가격·대기열 스케줄러는 ShedLock을 사용한다.
+# 여러 인스턴스에서 JWT 자동 생성 키는 공유되지 않으므로 replicas를 늘리기 전에
+# 동일한 키를 Secret으로 주입해야 한다. 운영 HA 검증은 별도 과제다.
 # -----------------------------------------------------------------------------
 replicaCount: 1
 
@@ -30,6 +28,7 @@ env:
   SPRING_PROFILES_ACTIVE: local
   # application.yml 기본 포트는 8088(호스트 포트 사정) — 컨테이너 안에선 표준 8080 사용.
   SERVER_PORT: "8080"
+  SERVER_ADDRESS: "0.0.0.0"
   DB_URL: jdbc:postgresql://host.k3d.internal:5440/ticketing
   REDIS_HOST: host.k3d.internal
   REDIS_PORT: "6390"

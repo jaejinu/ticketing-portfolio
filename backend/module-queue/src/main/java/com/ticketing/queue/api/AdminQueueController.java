@@ -56,7 +56,7 @@ public class AdminQueueController {
      * 차단 수동 해제 (오탐 대응).
      *
      * <p>
-     *   {@code key} 는 IP(IPv6 콜론 포함 가능) 또는 토큰 SHA-256 해시. 슬래시는 나올 수 없으므로
+     *   {@code key} 는 IP(IPv6 콜론 포함 가능) 또는 검증된 사용자 UUID. 슬래시는 나올 수 없으므로
      *   path variable 로 안전하다. 이미 만료·해제된 차단이면 404.
      * </p>
      */

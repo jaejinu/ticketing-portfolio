@@ -5,31 +5,29 @@
 # 한곳에서 버전을 올리면 전 모듈에 일관되게 반영되어 휴먼에러를 막는다.
 #
 # 큰 결정:
-#   - Spring Boot 3.3.x: Java 17 LTS와 호환되는 가장 최신 안정 라인.
-#   - Spring Cloud 2023.0.x: Boot 3.3 매트릭스 (Stream/Sleuth 대신 Micrometer로 이주됨).
+#   - Spring Boot 3.5.x: Java 17 LTS와 호환되는 가장 최신 안정 라인.
+#   - Spring Cloud 2023.0.x: Boot 3.5 매트릭스 (Stream/Sleuth 대신 Micrometer로 이주됨).
 #   - Redisson 3.32.x: Reactive 의존성 없는 Spring Boot 3 starter 사용 → 좌석 분산락 핵심.
 #   - JJWT 0.12.x: 0.11 대비 API가 새로 갈렸으므로 신버전 고정.
 #   - Bucket4j 8.10.x: Redis 백엔드(jcache-redis)로 분산 토큰 버킷 → 채널별 알림 quota·레이트리밋.
-#   - OpenTelemetry starter 2.7: micrometer-tracing 와 함께 OTLP/HTTP 익스포터 자동 구성.
+#   - OpenTelemetry starter 2.32: micrometer-tracing 와 함께 OTLP/HTTP 익스포터 자동 구성.
 # =============================================================================
 
 [versions]
 java                    = "17"
-spring-boot             = "3.3.4"
+spring-boot             = "3.5.16"
 spring-dependency-mgmt  = "1.1.6"
-spring-cloud            = "2023.0.3"
-redisson                = "3.32.0"
-kafka                   = "3.7.1"          # Boot 3.3 이 가져오는 spring-kafka 와 정합되는 클라이언트 라인
+spring-cloud            = "2025.0.3"
+redisson                = "3.52.0"
+kafka                   = "3.9.2"          # Boot 3.5 이 가져오는 spring-kafka 와 정합되는 클라이언트 라인
 testcontainers          = "1.21.0"
 jjwt                    = "0.12.6"
-micrometer-tracing      = "1.3.4"
-otel-spring-starter     = "2.7.0"
+otel-spring-starter     = "2.32.0"
 lombok                  = "1.18.34"
 bucket4j                = "8.10.1"
 shedlock                = "5.16.0"        # 스케줄러 분산 락 (leader election 대용 — ADR-0004 갱신 참고)
 jackson-databind-nullable = "0.2.6"        # OpenAPI 생성기/널 표현 호환
 mapstruct               = "1.6.0"
-flyway                  = "10.20.0"        # Boot 3.3 이 동일 라인을 끌어오지만 dialect 모듈은 명시 필요
 
 [libraries]
 # --- Spring Boot starters (버전은 BOM 으로 관리되므로 module 만 명시) -----------------
@@ -54,7 +52,7 @@ kafka-streams                       = { module = "org.apache.kafka:kafka-streams
 # --- DB / Migration ----------------------------------------------------------
 postgresql                          = { module = "org.postgresql:postgresql" }
 flyway-core                         = { module = "org.flywaydb:flyway-core" }
-flyway-postgresql                   = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
+flyway-postgresql                   = { module = "org.flywaydb:flyway-database-postgresql" }
 
 # --- Redis / Lock / RateLimit ------------------------------------------------
 redisson-spring-boot                = { module = "org.redisson:redisson-spring-boot-starter", version.ref = "redisson" }

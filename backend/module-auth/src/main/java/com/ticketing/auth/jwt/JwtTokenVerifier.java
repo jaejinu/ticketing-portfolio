@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -54,6 +55,15 @@ public class JwtTokenVerifier {
         @SuppressWarnings("unchecked")
         List<String> roles = claims.get("roles", List.class);
         return new ParsedToken(userId, email, name, roles == null ? List.of() : List.copyOf(roles));
+    }
+
+    /** Invalid credentials never establish an identity, including malformed UUID claims. */
+    public Optional<ParsedToken> tryVerify(String token) {
+        try {
+            return Optional.of(verify(token));
+        } catch (JwtException | IllegalArgumentException ex) {
+            return Optional.empty();
+        }
     }
 
     /** 파싱 결과 — application/security 레이어가 사용할 최소 정보. */

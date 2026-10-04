@@ -47,10 +47,8 @@ dependencies {
     implementation(libs.micrometer.tracing.bridge.otel)
     implementation(libs.micrometer.registry.otlp)
     implementation(libs.opentelemetry.spring.starter)
-    // OTel SDK 1.37+ 는 SdkMeter.gaugeBuilder 에서 incubator API(DoubleGauge) 를 참조한다.
-    // opentelemetry-spring-starter 가 incubator 를 transitive 로 안 가져와 ClassNotFoundException 가 난다.
-    // 명시 추가 — alpha 트랙이지만 운영에서도 안정적으로 동작 (구글/Spring 의 공식 가이드).
-    implementation("io.opentelemetry:opentelemetry-api-incubator:1.37.0-alpha")
+    // Incubator API must follow the OTel SDK version (ConfigProvider, gauges).
+    implementation("io.opentelemetry:opentelemetry-api-incubator:${property("opentelemetry.version")}-alpha")
 
     // Flyway/DB 드라이버는 app-gateway 에도 두어 spring.flyway.locations 통합 적용 가능.
     implementation(libs.flyway.core)

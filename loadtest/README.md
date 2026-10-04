@@ -63,28 +63,19 @@ TARGET_URL=http://ingress.k3d.local make bottest
 | WS 5만 동접 / Consumer lag < 1s | Gatling | FullPeakSimulation        | 10    |
 | 매크로 차단률                     | Locust  | patterns/{normal, macro}  | 7     |
 
-## 결과 캡쳐 자리
+## 측정 기록과 검증 범위
 
-Phase 별 측정 결과를 여기에 모은다 (스크린샷 + 한 줄 코멘트).
+실행 환경과 결과는 [2026-07 부하 테스트 기록](../docs/loadtest/2026-07-28-kpi-report.md)에 있습니다.
+위 KPI 표는 검증 계획입니다. 10만 동시 접속과 WebSocket 5만 연결은 아직 실측하지 않았습니다.
+FullPeak의 4,100 VU는 누적 주입량이며 동시 접속 수가 아닙니다.
 
-### Phase 0 — 스캐폴드 검증 (현재)
-- [ ] `./gradlew gatlingRun --simulation simulations.SmokeSimulation` 통과 → `gatling/build/reports/gatling/smokesimulation-*/index.html` 첨부
-- [ ] `locust -f locustfile.py --headless -u 1 -r 1 -t 5s` 통과 → 종료 로그 캡쳐 첨부
-
-### Phase 3 — 좌석 동시점유
-- [ ] SeatHoldSimulation 리포트
-- [ ] 좌석 중복판매 0건 카운트 쿼리 결과
-
-### Phase 7 — 봇 차단
-- [ ] normal vs macro 패턴 성공률 비교 그래프
-
-### Phase 10 — 풀-필 데모
-- [ ] FullPeakSimulation 리포트
-- [ ] Grafana Tempo / Kafka consumer lag 캡쳐
+2026-10 요청 제한 보강 후에는 임의의 `X-Forwarded-For` 및 위조 Bearer로 별도 사용자를 만들 수 없습니다.
+이전 Locust 결과는 당시 코드·합성 IP 조건의 역사적 기록이며 현재 방어 성능을 입증하지 않습니다.
+새 부하 검증에는 실제 발급한 계정별 JWT 또는 분산 주입기의 실제 연결 주소를 사용해야 합니다.
 
 ## 함정 메모
 
 - **JDK / Python 3.12 미설치 시**: Gradle wrapper / Locust 가 즉시 죽는다. 각 모듈 README 의 사전 요구 섹션 먼저 확인.
-- **백엔드가 안 떠 있어도 스캐폴드는 통과해야 한다** — Connection refused 가 리포트에 찍히는 것이 정상.
+- 백엔드 연결 실패는 성공적인 부하 검증이 아닙니다. 대상 준비 상태와 요청 성공률을 함께 확인합니다.
 - **TARGET_URL** 에는 protocol(http/https) 까지 포함해야 한다. `localhost:8088` 만 적으면 Gatling 이 거부.
 - **Gradle wrapper jar 가 git LFS / 일반 파일 어느 쪽으로 커밋되는지** 확인 필요. 보통 일반 파일이지만, 회사 정책에 따라 LFS 일 수도.

@@ -36,7 +36,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "pnpm exec next start -p 3012",
+    command: "pnpm exec next start -H 127.0.0.1 -p 3012",
     url: "http://localhost:3012",
     reuseExistingServer: !process.env.CI,
   },

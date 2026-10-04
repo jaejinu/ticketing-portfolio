@@ -39,14 +39,34 @@ subprojects {
         }
     }
 
+    // Also apply to app-gateway's automatic Spring Boot BOM import.
+    extra["jackson-bom.version"] = "2.21.7"
+    extra["netty.version"] = "4.1.138.Final"
+    extra["tomcat.version"] = "10.1.60"
+    extra["postgresql.version"] = "42.7.13"
+    extra["log4j2.version"] = "2.25.5"
+    extra["opentelemetry.version"] = "1.66.0"
+
     // Spring Boot BOM 을 모든 모듈에 imports.
     // -> spring-boot-starter-* / spring-kafka / flyway-core 등은 버전 명시 없이 사용 가능.
     the<io.spring.gradle.dependencymanagement.dsl.DependencyManagementExtension>().apply {
         imports {
-            mavenBom("org.springframework.boot:spring-boot-dependencies:${rootProject.libs.versions.spring.boot.get()}")
+            mavenBom("org.springframework.boot:spring-boot-dependencies:${rootProject.libs.versions.spring.boot.get()}") {
+                // Security patches newer than the Boot BOM; see docs/security-audit.md.
+                bomProperty("jackson-bom.version", "2.21.7")
+                bomProperty("netty.version", "4.1.138.Final")
+                bomProperty("tomcat.version", "10.1.60")
+                bomProperty("postgresql.version", "42.7.13")
+                bomProperty("log4j2.version", "2.25.5")
+                bomProperty("opentelemetry.version", "1.66.0")
+            }
             mavenBom("org.springframework.cloud:spring-cloud-dependencies:${rootProject.libs.versions.spring.cloud.get()}")
             mavenBom("org.testcontainers:testcontainers-bom:${rootProject.libs.versions.testcontainers.get()}")
         }
+    }
+
+    the<io.spring.gradle.dependencymanagement.dsl.DependencyManagementExtension>().dependencies {
+        dependency("at.yawk.lz4:lz4-java:1.11.4")
     }
 
     // 공통 저장소는 settings.gradle.kts 에 중앙 집중되어 있으므로 여기엔 적지 않는다.
@@ -65,6 +85,7 @@ subprojects {
 
         // 모든 모듈은 JUnit 5 + AssertJ + Spring Test 기본 제공.
         "testImplementation"(libs.spring.boot.starter.test)
+        "testRuntimeOnly"("org.junit.platform:junit-platform-launcher")
     }
 
     // JUnit 5 활성화

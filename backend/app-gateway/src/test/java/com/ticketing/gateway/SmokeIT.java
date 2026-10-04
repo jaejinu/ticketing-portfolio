@@ -46,11 +46,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * </p>
  */
 @SpringBootTest(properties = {
-        // OTel auto-config 는 SDK 모듈 간 버전 불일치(SpanSuppressors / InstrumentationUtil 누락) 가 있어
-        // SmokeIT 부팅이 깨진다. 운영용 의존은 유지하되 테스트 컨텍스트에선 OTel auto-config 만 제외 —
-        // 본 smoke 의 목적은 "11모듈 부팅 정합 검증" 이지 OTel 자체 검증이 아니다.
-        "spring.autoconfigure.exclude="
-                + "io.opentelemetry.instrumentation.spring.autoconfigure.OpenTelemetryAutoConfiguration",
+        // Keep OTel auto-configuration enabled to catch runtime version mismatch.
+        // No external collector is required in this isolated smoke test.
+        "otel.traces.exporter=none",
+        "otel.metrics.exporter=none",
+        "otel.logs.exporter=none",
 })
 @AutoConfigureMockMvc
 @ActiveProfiles("test")

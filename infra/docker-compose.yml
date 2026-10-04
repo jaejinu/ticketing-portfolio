@@ -42,7 +42,7 @@ services:
       POSTGRES_INITDB_ARGS: "--data-checksums"
     ports:
       # ${VAR:-default} 패턴은 .env 미설정 시 fallback.
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       # init-db/*.sql 은 빈 DB 최초 기동 시 알파벳 순으로 자동 실행됨.
@@ -72,7 +72,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -99,11 +99,11 @@ services:
       # 9092(PLAINTEXT 내부 리스너)로 매핑하면 클라이언트가 메타데이터에서
       # advertised "kafka:9092"(도커 내부 DNS) 를 받아 이후 모든 연결이 실패한다
       # (호스트에서 도는 백엔드의 Kafka consume 전멸 — 알람/WS팬아웃/수요집계).
-      - "${KAFKA_PORT:-9092}:9094"
-      - "${KAFKA_CONTROLLER_PORT:-9093}:9093"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${KAFKA_PORT:-9092}:9094"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${KAFKA_CONTROLLER_PORT:-9093}:9093"
       # k3d pod 용 리스너 — pod 는 host.k3d.internal 로 호스트에 접근하므로
       # advertised 주소도 host.k3d.internal 이어야 한다 (localhost 광고를 받으면 pod 안에서 즉사).
-      - "9096:9096"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:9096:9096"
     environment:
       # KRaft 핵심 설정 ----------------------------------------------------
       # 노드 ID: 단일 노드라 1로 고정. 클러스터 구성 시 노드마다 다른 값.
@@ -151,8 +151,8 @@ services:
     container_name: ticketing-mailhog
     restart: unless-stopped
     ports:
-      - "${MAILHOG_SMTP_PORT:-1025}:1025"  # SMTP
-      - "${MAILHOG_UI_PORT:-8025}:8025"    # Web UI
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${MAILHOG_SMTP_PORT:-1025}:1025"  # SMTP
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${MAILHOG_UI_PORT:-8025}:8025"    # Web UI
     healthcheck:
       # mailhog 이미지에는 wget이 포함돼 있다. 8025(UI)가 응답하면 SMTP도 살아있는 것으로 본다.
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8025/"]
@@ -174,7 +174,7 @@ services:
     environment:
       PORT: "8086"
     ports:
-      - "${FCM_MOCK_PORT:-8086}:8086"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${FCM_MOCK_PORT:-8086}:8086"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8086/health"]
       interval: 10s
@@ -196,7 +196,7 @@ services:
       PORT: "8087"
       MOCK_PG_SEED: "${MOCK_PG_SEED:-42}"
     ports:
-      - "${MOCK_PG_PORT:-8087}:8087"
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${MOCK_PG_PORT:-8087}:8087"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8087/health"]
       interval: 10s

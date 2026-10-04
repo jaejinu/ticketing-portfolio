@@ -51,10 +51,10 @@
 ### 감수해야 할 비용
 - **메시지 손실 가능성**: broker 디스크 손상 시 메시지 영구 손실. Outbox로 일부 복구 가능하지만 **outbox를 안 거치는 경로(Kafka Streams 내부 state store, 가격 틱 직접 발행 등)는 영향**.
 - **장애 시연 한계**: ISR 전환, 리더 election, 파티션 리밸런스 같은 운영급 시연 불가. 이건 ADR로만 박고 README에 솔직히 적는다.
-- **부하 한계**: 단일 broker는 디스크 IO에 묶임. KPI(10만 동접)는 도달 가능하지만 그 이상 늘리려면 멀티 broker가 필요.
+- **부하 한계**: 단일 broker는 디스크 IO에 묶임. 10만 동시 접속의 처리 가능 여부는 검증하지 않았다. broker 증설만으로 애플리케이션 전체 처리량이 보장되지 않으며 분산 부하·장애 실험이 필요하다.
 - **`auto.offset.reset` 정책 주의**: 단일 노드 재시작 후 컨슈머가 `earliest` 면 폭증, `latest` 면 손실. 컨슈머별 명시 필요.
 
 ### 미래 옵션
-- 운영급 전환은 단순 docker-compose 변경(3 broker)으로 가능하지만, 학습 우선순위가 아님.
+- 운영 환경은 broker 복제 구성뿐 아니라 데이터 보존, 인증·암호화, 장애 복구와 용량 검증이 추가로 필요하다.
 - Confluent Cloud 무료 티어를 시연에 쓰는 옵션도 있음 — `bootstrap.servers` 만 바꿔 끼우면 동일 코드 동작. 시연 직전에 토글 가능.
 - Schema Registry는 도입하지 않음. envelope JSON 안에 `type` + `version` 필드로 약식 스키마 진화 처리. (ADR-0004 후보).

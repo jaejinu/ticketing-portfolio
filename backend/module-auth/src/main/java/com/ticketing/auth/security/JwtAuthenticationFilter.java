@@ -76,7 +76,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             UsernamePasswordAuthenticationToken auth =
                     new UsernamePasswordAuthenticationToken(principal, /*credentials*/ null, authorities);
             SecurityContextHolder.getContext().setAuthentication(auth);
-        } catch (JwtException ex) {
+        } catch (JwtException | IllegalArgumentException ex) {
             log.debug("[auth] invalid jwt: {}", ex.getMessage());
             SecurityContextHolder.clearContext();
         }

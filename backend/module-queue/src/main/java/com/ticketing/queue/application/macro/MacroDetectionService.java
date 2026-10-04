@@ -123,7 +123,7 @@ public class MacroDetectionService {
      * </p>
      *
      * @param scope     스코프 문자열 ("ip" / "user")
-     * @param key       스코프 안 식별자 (IP 또는 토큰 해시)
+     * @param key       스코프 안 식별자 (IP 또는 검증된 사용자 UUID)
      * @param userAgent 요청 UA 헤더 원문
      * @return 판정 결과 (통과 or 새로 차단됨)
      */

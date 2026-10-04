@@ -1,6 +1,7 @@
 package com.ticketing.queue.application.macro;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ticketing.queue.api.scope.RequestScope;
 import com.ticketing.queue.api.macro.MacroDetectionFilter;
 import com.ticketing.queue.application.QueueProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -27,9 +28,9 @@ public class MacroDetectionFilterRegistration {
     public FilterRegistrationBean<MacroDetectionFilter> queueMacroDetectionFilter(
             MacroDetectionService service,
             QueueProperties.MacroDetection props,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper, RequestScope requestScope) {
 
-        MacroDetectionFilter filter = new MacroDetectionFilter(service, props, objectMapper);
+        MacroDetectionFilter filter = new MacroDetectionFilter(service, props, objectMapper, requestScope);
 
         FilterRegistrationBean<MacroDetectionFilter> reg = new FilterRegistrationBean<>(filter);
         reg.setName("queueMacroDetectionFilter");

@@ -64,7 +64,7 @@ public class RateLimitService {
      * 스코프 × 식별자로 토큰 하나를 소비 시도한다.
      *
      * @param scope {@link RequestScope#SCOPE_IP} 또는 {@link RequestScope#SCOPE_USER}
-     * @param key   스코프 안에서의 식별자 (IP 문자열 또는 토큰 해시)
+     * @param key   스코프 안에서의 식별자 (IP 문자열 또는 검증된 사용자 UUID)
      * @return 소비 결과 — {@link ConsumptionProbe#isConsumed()} 로 허용 여부 판단
      */
     public ConsumptionProbe tryConsume(String scope, String key) {

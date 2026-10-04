@@ -195,7 +195,7 @@ public class QueueAdminService {
     // 조회 결과 모델 — Jackson 이 record 컴포넌트명 그대로 직렬화한다.
     // -------------------------------------------------------------------------
 
-    /** 차단 중인 매크로 하나. key 는 IP 또는 토큰 SHA-256 해시 (raw 토큰은 애초에 저장 안 함). */
+    /** 차단 중인 매크로 하나. key 는 IP 또는 검증된 사용자 UUID (raw 토큰은 애초에 저장 안 함). */
     public record MacroBlock(String scope, String key, long remainingSeconds) {
     }
 

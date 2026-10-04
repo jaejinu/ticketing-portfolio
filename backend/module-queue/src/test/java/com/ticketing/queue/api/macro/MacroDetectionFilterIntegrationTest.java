@@ -4,6 +4,11 @@ import com.ticketing.queue.QueueIntegrationTestApp;
 import com.ticketing.queue.QueueIntegrationTestBase;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.redisson.api.RedissonClient;
+import com.ticketing.auth.jwt.JwtTokenIssuer;
+import java.util.List;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
@@ -25,10 +30,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <h2>시나리오</h2>
  * <ol>
- *   <li><b>균일 요청 × window 크기</b> — UA 없이 짧은 간격으로 windowSize 번 호출.
+ *   <li><b>봇 UA × window 크기</b> — 명시적 봇 UA로 windowSize 번 호출.
  *       마지막 호출이 403 + code=MACRO_DETECTED 여야 한다.</li>
  *   <li><b>차단 지속</b> — 한 번 차단된 스코프는 blockDuration 안에는 계속 403.</li>
- *   <li><b>스코프 격리</b> — 다른 IP 는 영향 없이 그대로 통과 (Security 401 은 무관).</li>
+ *   <li><b>스코프 격리</b> — 전달 헤더를 바꿔도 차단 유지, 검증된 사용자만 독립 집계.</li>
  * </ol>
  *
  * <h2>rate-limit 는 왜 꺼두는가</h2>
@@ -50,15 +55,22 @@ class MacroDetectionFilterIntegrationTest extends QueueIntegrationTestBase {
         registry.add("app.queue.macro-detection.threshold",  () -> "0.5");
         registry.add("app.queue.macro-detection.block-duration",() -> "PT10S");
         registry.add("app.queue.macro-detection.window-ttl", () -> "PT30S");
-        registry.add("app.queue.macro-detection.weight-interval", () -> "0.7");
-        registry.add("app.queue.macro-detection.weight-ua",  () -> "0.3");
+        registry.add("app.queue.macro-detection.weight-interval", () -> "0.0");
+        registry.add("app.queue.macro-detection.weight-ua",  () -> "1.0");
     }
 
     @LocalServerPort
     int port;
+    @Autowired RedissonClient redis;
+    @Autowired JwtTokenIssuer issuer;
+
+    @BeforeEach
+    void clearTestWindows() {
+        redis.getKeys().deleteByPattern("queue:macro:*");
+    }
 
     @Test
-    @DisplayName("균일 간격 × window → 마지막 호출이 403 (MACRO_DETECTED)")
+    @DisplayName("명시적 봇 UA × window → 마지막 호출이 403 (MACRO_DETECTED)")
     void uniformRequests_getBlocked() {
         RestTemplate rt = restTemplateWithoutErrorHandler();
         String url = "http://localhost:" + port + "/api/v1/queue/enqueue";
@@ -99,8 +111,8 @@ class MacroDetectionFilterIntegrationTest extends QueueIntegrationTestBase {
     }
 
     @Test
-    @DisplayName("스코프 격리: 다른 IP 는 매크로 차단과 무관하게 지나감")
-    void otherScope_notAffected() {
+    @DisplayName("전달 헤더·위조 토큰으로 차단 회피 불가, 검증된 사용자만 독립 집계")
+    void forgedHeadersCannotEscapeButVerifiedUserIsIndependent() {
         RestTemplate rt = restTemplateWithoutErrorHandler();
         String url = "http://localhost:" + port + "/api/v1/queue/enqueue";
         String badIp = uniqueIp();
@@ -111,11 +123,16 @@ class MacroDetectionFilterIntegrationTest extends QueueIntegrationTestBase {
             rt.exchange(url, HttpMethod.POST, request(badIp, null, null), String.class);
         }
 
-        // goodIp 는 여전히 window 채움 전이라 통과 (Security 401 은 정상).
+        // A different forwarded IP and arbitrary Bearer do not create a new identity.
+        ResponseEntity<String> forged = rt.exchange(url, HttpMethod.POST,
+                request(goodIp, null, "forged-" + UUID.randomUUID()), String.class);
+        assertThat(forged.getStatusCode().value()).isEqualTo(403);
+        assertThat(forged.getBody()).contains("MACRO_DETECTED");
+        String token = issuer.issue(UUID.randomUUID(), "test@example.com", "Fixture", List.of("USER"));
         ResponseEntity<String> res = rt.exchange(url, HttpMethod.POST,
-                request(goodIp, null, null), String.class);
+                request(goodIp, null, token), String.class);
         assertThat(res.getStatusCode().value())
-                .as("다른 IP 는 매크로 차단 대상 아님 (401 은 인증 미비로 정상)")
+                .as("검증된 사용자는 익명 IP 차단과 별도 집계")
                 .isNotEqualTo(HttpStatus.FORBIDDEN.value());
     }
 
@@ -141,8 +158,8 @@ class MacroDetectionFilterIntegrationTest extends QueueIntegrationTestBase {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set("X-Forwarded-For", forwardedForIp);
-        // ua = null 이면 헤더 생략 — uaScore=0.9 가 발동해 매크로 신호 강화.
-        if (ua != null) headers.set(HttpHeaders.USER_AGENT, ua);
+        // Deterministic bot signal; interval scoring is covered in the service unit tests.
+        headers.set(HttpHeaders.USER_AGENT, ua == null ? "python-requests/test-fixture" : ua);
         if (bearer != null) headers.set(HttpHeaders.AUTHORIZATION, "Bearer " + bearer);
         return new HttpEntity<>("{\"scheduleId\":\"00000000-0000-0000-0000-000000000000\"}", headers);
     }

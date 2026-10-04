@@ -42,10 +42,13 @@ server:
   # 기본 8080 이 다른 dev 컨테이너에 점유돼 8088 로 우회. 환경변수로 override 가능.
   # (8090 도 다른 dev 컨테이너 점유 — 8088 이 비어있어 선택)
   port: ${SERVER_PORT:8088}
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  forward-headers-strategy: none
 
 management:
   server:
     port: 8081
+    address: ${MANAGEMENT_ADDRESS:127.0.0.1}
   endpoints:
     web:
       exposure:

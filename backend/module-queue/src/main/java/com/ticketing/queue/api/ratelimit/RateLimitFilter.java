@@ -39,7 +39,7 @@ import java.util.Map;
  *
  * <h2>스코프 결정</h2>
  * <p>
- *   {@link RequestScope#resolve(HttpServletRequest)} 로 IP 또는 토큰 해시 기반 스코프를 얻는다.
+ *   {@link RequestScope#resolve(HttpServletRequest)} 로 직접 연결 IP 또는 검증된 사용자 ID 기반 스코프를 얻는다.
  *   매크로 탐지 필터도 같은 유틸을 쓰므로 두 필터는 같은 스코프+키에 대해 정확히 동일한 카운터를 참조.
  * </p>
  *
@@ -69,13 +69,15 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final RateLimitService rateLimitService;
     private final QueueProperties.RateLimit props;
     private final ObjectMapper objectMapper;
+    private final RequestScope requestScope;
 
     public RateLimitFilter(RateLimitService rateLimitService,
                            QueueProperties.RateLimit props,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper, RequestScope requestScope) {
         this.rateLimitService = rateLimitService;
         this.props = props;
         this.objectMapper = objectMapper;
+        this.requestScope = requestScope;
     }
 
     @Override
@@ -89,7 +91,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
 
-        RequestScope.Resolved resolved = RequestScope.resolve(request);
+        RequestScope.Resolved resolved = requestScope.resolve(request);
         ConsumptionProbe probe = rateLimitService.tryConsume(resolved.scope(), resolved.key());
 
         if (probe.isConsumed()) {

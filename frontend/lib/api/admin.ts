@@ -21,7 +21,7 @@ import { apiRequest, apiRequestVoid } from './client';
  * 스키마 — backend record 컴포넌트명과 1:1
  * ──────────────────────────────────────────────────────── */
 
-/** 차단 중인 매크로 하나. key 는 IP 또는 토큰 SHA-256 해시. */
+/** 차단 중인 매크로 하나. key 는 IP 또는 검증된 사용자 UUID. */
 export const MacroBlockSchema = z.object({
   scope: z.string(), // 'ip' | 'user' — 서버가 새 스코프를 추가해도 깨지지 않게 string 으로 수용
   key: z.string(),

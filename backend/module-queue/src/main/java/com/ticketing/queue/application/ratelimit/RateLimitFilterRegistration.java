@@ -1,6 +1,7 @@
 package com.ticketing.queue.application.ratelimit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ticketing.queue.api.scope.RequestScope;
 import com.ticketing.queue.api.ratelimit.RateLimitFilter;
 import com.ticketing.queue.application.QueueProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -39,9 +40,9 @@ public class RateLimitFilterRegistration {
     public FilterRegistrationBean<RateLimitFilter> queueRateLimitFilter(
             RateLimitService rateLimitService,
             QueueProperties.RateLimit rateLimit,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper, RequestScope requestScope) {
 
-        RateLimitFilter filter = new RateLimitFilter(rateLimitService, rateLimit, objectMapper);
+        RateLimitFilter filter = new RateLimitFilter(rateLimitService, rateLimit, objectMapper, requestScope);
 
         FilterRegistrationBean<RateLimitFilter> reg = new FilterRegistrationBean<>(filter);
         reg.setName("queueRateLimitFilter");
