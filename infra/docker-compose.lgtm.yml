@@ -15,21 +15,30 @@
 
 volumes:
   loki-data:
+    name: ${LOKI_DATA_VOLUME:-${COMPOSE_PROJECT_NAME:-ticketing}_loki-data}
+    external: ${LGTM_VOLUMES_EXTERNAL:-false}
   tempo-data:
+    name: ${TEMPO_DATA_VOLUME:-${COMPOSE_PROJECT_NAME:-ticketing}_tempo-data}
+    external: ${LGTM_VOLUMES_EXTERNAL:-false}
   mimir-data:
+    name: ${MIMIR_DATA_VOLUME:-${COMPOSE_PROJECT_NAME:-ticketing}_mimir-data}
+    external: ${LGTM_VOLUMES_EXTERNAL:-false}
   grafana-data:
+    name: ${GRAFANA_DATA_VOLUME:-${COMPOSE_PROJECT_NAME:-ticketing}_grafana-data}
+    external: ${LGTM_VOLUMES_EXTERNAL:-false}
 
 services:
   # ---------------------------------------------------------------------------
   # OpenTelemetry Collector
   # ---------------------------------------------------------------------------
   # 백엔드 SDK는 OTLP/gRPC(4317) 또는 HTTP(4318)로 여기로 보낸다.
-  # contrib 이미지가 Loki/Tempo/Mimir exporter 포함.
+  # Loki는 표준 OTLP HTTP, Tempo는 OTLP gRPC, Mimir는 remote_write 사용.
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.106.0
+    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.162.0@sha256:39923a8e431bd1f57be82411999d389fcfe40857492e4365456d97a4c1f74be6
     container_name: ticketing-otel-collector
     restart: unless-stopped
     command: ["--config=/etc/otelcol/config.yaml"]
+    mem_limit: 512m
     volumes:
       - ./otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
     ports:
@@ -45,7 +54,7 @@ services:
   # Loki — 로그 저장소
   # ---------------------------------------------------------------------------
   loki:
-    image: grafana/loki:3.1.0
+    image: grafana/loki:3.7.8@sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193
     container_name: ticketing-loki
     restart: unless-stopped
     command: ["-config.file=/etc/loki/config.yaml"]
@@ -60,7 +69,7 @@ services:
   # Tempo — 분산 트레이스 저장소
   # ---------------------------------------------------------------------------
   tempo:
-    image: grafana/tempo:2.5.0
+    image: grafana/tempo:3.1.0@sha256:3076b8dcdfb32fd6bc5ccef85e7b7313e6199b9cb84366257fc17ecb696db5fd
     container_name: ticketing-tempo
     restart: unless-stopped
     command: ["-config.file=/etc/tempo/config.yaml"]
@@ -76,7 +85,7 @@ services:
   # Mimir — Prometheus 호환 메트릭 저장소
   # ---------------------------------------------------------------------------
   mimir:
-    image: grafana/mimir:2.13.0
+    image: grafana/mimir:3.2.1@sha256:92838f113ba54230014e79bc812e57ca90bb9ebc06e665f59e4f700098c2dd04
     container_name: ticketing-mimir
     restart: unless-stopped
     command: ["-config.file=/etc/mimir/config.yaml"]
@@ -93,7 +102,7 @@ services:
   # provisioning 디렉터리를 마운트해 데이터소스/대시보드를 코드로 관리.
   # 기본 로그인 admin/admin (.env로 덮어쓸 수 있음).
   grafana:
-    image: grafana/grafana:11.2.0
+    image: ${GRAFANA_IMAGE:-grafana/grafana:13.2.3@sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572}
     container_name: ticketing-grafana
     restart: unless-stopped
     environment:
@@ -103,8 +112,7 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       # provisioning에서 등록한 데이터소스/대시보드는 UI에서 수정 잠금 해제.
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/kpi.json
-      # 플러그인 자동 설치 자리.
-      GF_INSTALL_PLUGINS: ""
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana-provisioning/datasources:/etc/grafana/provisioning/datasources:ro

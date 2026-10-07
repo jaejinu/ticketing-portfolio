@@ -79,13 +79,13 @@ class SmokeIT {
 
     @SuppressWarnings("resource")
     static final GenericContainer<?> REDIS =
-            new GenericContainer<>(DockerImageName.parse("redis:7-alpine"))
+            new GenericContainer<>(DockerImageName.parse("redis:7.4.11-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499"))
                     .withExposedPorts(6379)
                     .withReuse(true);
 
     @SuppressWarnings("resource")
     static final KafkaContainer KAFKA =
-            new KafkaContainer(DockerImageName.parse("apache/kafka:3.7.1"))
+            new KafkaContainer(DockerImageName.parse("apache/kafka:4.3.1@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837").asCompatibleSubstituteFor("apache/kafka"))
                     .withReuse(true);
 
     @BeforeAll

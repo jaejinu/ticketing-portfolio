@@ -8,6 +8,10 @@ target: all,alertmanager,overrides-exporter
 
 multitenancy_enabled: false
 
+# Retain the single-node classic architecture; no observability Kafka dependency.
+ingest_storage:
+  enabled: false
+
 server:
   http_listen_port: 9009
   grpc_listen_port: 9095
@@ -41,6 +45,7 @@ distributor:
       store: memberlist
 
 ingester:
+  push_grpc_method_enabled: true
   ring:
     instance_addr: 127.0.0.1
     kvstore:

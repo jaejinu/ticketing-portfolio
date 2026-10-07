@@ -1,8 +1,5 @@
 # Ticketing — 다이나믹 프라이싱 예매 플랫폼
 
-[![Frontend quality](https://github.com/jaejinu/ticketing-portfolio/actions/workflows/frontend.yml/badge.svg)](https://github.com/jaejinu/ticketing-portfolio/actions/workflows/frontend.yml)
-[![Backend quality](https://github.com/jaejinu/ticketing-portfolio/actions/workflows/backend.yml/badge.svg)](https://github.com/jaejinu/ticketing-portfolio/actions/workflows/backend.yml)
-
 수요에 따라 가격이 변하는 공연 예매를 구현한 포트폴리오 프로젝트입니다. **좌석 확보 시점의 가격을 결제까지 고정**하고, 좌석 경합·연결 끊김·결제 결과 지연에서도 사용자가 예매를 이어갈 수 있도록 설계했습니다.
 
 Java 17 · Spring Boot 3 · Next.js 16 · TypeScript · Redis · Kafka · TimescaleDB
@@ -75,6 +72,18 @@ make test
 | FullPeak 총 4,100 VU 주입 | 혼합 조회·예매·대기 시나리오 실행 | 누적 가상 사용자 수이며 4,100 동시 접속을 의미하지 않음 |
 
 10만 동시 접속, WebSocket 5만 연결, 활성 알람 100k는 설계 목표입니다. 해당 규모의 검증을 완료했다고 주장하지 않습니다.
+
+## 구현 범위와 후속 정리
+
+- 결제 실패 시 좌석은 즉시 해제하지 않고 유지한다. 사용자의 해제 또는 기본 5분 TTL 만료로 정리한다.
+- 같은 멱등 키의 요청은 PENDING도 그대로 반환한다. 다른 키로 같은 점유를 요청해도 기존 PENDING/APPROVED 결제에 연결한다.
+- PG 결과 불명은 PENDING으로 유지하고 자동 조회한다. 유효한 점유는 승인 확정하고,
+  종료된 점유·미접수 주문은 PG 취소 확인 후 실패로 확정한다.
+- Mock PG는 주문별 멱등 응답·조회·취소와 재시작 후 상태 보존을 지원한다.
+  실제 PG 연동과 사용자 환불 기능은 별도 과제이며, 상세 범위는 [결제 ADR](docs/adr/0001-saga-vs-2pc.md)에 정리했다.
+- Webhook 알림은 발송하지 않고 `SKIPPED` 결과를 반환한다. FCM은 Mock, SMTP는 로컬 Mailpit으로 시연한다.
+- 프론트 브라우저 테스트는 API 모의 응답 기반이다. 실제 프론트·백엔드·Mock PG를 연결한
+  예매 전체 흐름과 장애 복구 검증은 별도 범위로 관리한다.
 
 ## 구조
 

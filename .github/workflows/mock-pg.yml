@@ -1,0 +1,26 @@
+name: Mock PG quality
+on:
+  pull_request:
+    paths: ['infra/mock-services/mock-pg/**', '.github/workflows/mock-pg.yml']
+  push:
+    branches: [main]
+    paths: ['infra/mock-services/mock-pg/**', '.github/workflows/mock-pg.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: infra/mock-services/mock-pg
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts
+      - run: npm test

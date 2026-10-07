@@ -23,6 +23,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.OffsetDateTime;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.data.domain.PageRequest;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
@@ -32,48 +36,10 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 결제 Saga 오케스트레이션.
- *
- * <h2>핵심 흐름</h2>
- * <pre>
- *   pay(holdId, amount, idempotencyKey, body, holderId):
- *     ─ TX 1: 멱등 키 체크 + Payment 생성 ──────────────────────────
- *       1) (holderId, key) 가 이미 있으면:
- *            hash 일치 → 기존 Payment 반환 (멱등 응답)
- *            hash 불일치 → IDEMPOTENCY_KEY_CONFLICT
- *       2) Payment.start() 영속 (PENDING)
- *       3) IdempotencyKey 영속
- *     COMMIT
- *
- *     ─ 외부: Mock PG 호출 (TX 밖) ────────────────────────────────
- *       4) mockPgClient.charge(paymentId, amount)
- *
- *     ─ TX 2: finalize ───────────────────────────────────────────
- *       5-A) PG 승인:
- *            seatHoldService.markSold(holdId, holderId)  → SeatHold + Seat SOLD + SEAT_SOLD outbox
- *            payment.approve(pgTxnId)
- *            outbox PAYMENT_APPROVED
- *       5-B) PG 거절 또는 PG 호출 실패:
- *            payment.fail(code, reason)
- *            outbox PAYMENT_FAILED
- *            (hold 는 그대로 — 사용자가 다른 결제 수단으로 재시도 가능)
- *     COMMIT
- *
- *     return Payment
- * </pre>
- *
- * <h2>왜 TX 경계를 둘로 나누는가</h2>
- * <p>
- *   첫 TX 안에서 PG 호출까지 묶으면 PG 응답 대기 시간 동안 DB 락이 유지된다.
- *   PG 가 느리면 동시 결제가 줄줄이 막힌다. 따라서 stage(첫 TX) → PG → finalize(둘째 TX) 패턴.
- * </p>
- *
- * <h2>멱등 재진입</h2>
- * <p>
- *   같은 (holderId, idempotencyKey) 가 다시 오면 첫 TX 가 기존 Payment 를 그대로 반환하고
- *   PG 를 또 호출하지 않는다. 첫 호출이 PENDING 으로 남아 있는 경우(서버 다운 등) 는 Phase 5b
- *   reconciler 가 PG 조회 후 결정.
- * </p>
+ * TX1에서 사용자별 요청 잠금 + 점유 행 잠금으로 결제를 생성한다.
+ * 최초 생성자만 PG를 호출한다. 재요청은 PENDING을 포함한 기존 결과를 반환한다.
+ * PG 결과 불명은 PENDING으로 유지하고, DB 처리 토큰을 획득한 복구 작업이 조회한다.
+ * 외부 HTTP 호출 중에는 DB 트랜잭션을 열어 두지 않는다.
  */
 @Service
 public class PaymentSagaService {
@@ -91,6 +57,8 @@ public class PaymentSagaService {
     private final ObjectMapper objectMapper;
     private final TransactionTemplate txTemplate;
     private final PaymentProperties props;
+    private final JdbcTemplate jdbc;
+    private final Clock clock;
 
     // ---- 메트릭 ---------------------------------------------------------------
     private final Counter approvedCounter;
@@ -108,7 +76,8 @@ public class PaymentSagaService {
                                ObjectMapper objectMapper,
                                TransactionTemplate txTemplate,
                                PaymentProperties props,
-                               MeterRegistry meterRegistry) {
+                               MeterRegistry meterRegistry,
+                               JdbcTemplate jdbc, Clock clock) {
         this.paymentRepository = paymentRepository;
         this.idempotencyKeyRepository = idempotencyKeyRepository;
         this.seatHoldService = seatHoldService;
@@ -119,12 +88,20 @@ public class PaymentSagaService {
         this.objectMapper = objectMapper;
         this.txTemplate = txTemplate;
         this.props = props;
+        this.jdbc = jdbc;
+        this.clock = clock;
+        if (props.getProcessingLease() == null || props.getProcessingLease().isNegative()
+                || props.getProcessingLease().isZero() || props.getReconcileRetry() == null
+                || props.getReconcileRetry().isNegative() || props.getReconcileRetry().isZero()
+                || props.getReconcileBatchSize() < 1) {
+            throw new IllegalArgumentException("payment recovery durations and batch size must be positive");
+        }
 
         this.approvedCounter = Counter.builder("payment.approved")
                 .description("Payments approved by mock PG")
                 .register(meterRegistry);
         this.failedCounter = Counter.builder("payment.failed")
-                .description("Payments rejected by mock PG or PG-unavailable")
+                .description("Payments declined or cancellation confirmed by PG")
                 .register(meterRegistry);
         this.idempotentReplayCounter = Counter.builder("payment.idempotent.replay")
                 .description("Idempotency-Key replays returning existing payment")
@@ -134,139 +111,161 @@ public class PaymentSagaService {
                 .register(meterRegistry);
     }
 
-    /**
-     * 결제 진행 — saga 전체 진입점.
-     *
-     * @param holderId       인증된 사용자 id
-     * @param holdId         점유 식별자
-     * @param amount         결제 금액 (원)
-     * @param idempotencyKey 클라이언트가 발급한 멱등 키 (Idempotency-Key 헤더)
-     * @param requestBody    멱등 hash 계산용 — 클라이언트가 보낸 body 원본
-     * @return 결제 결과 Payment (APPROVED 또는 FAILED)
-     */
-    public Payment pay(UUID holderId, UUID holdId, long amount,
-                        String idempotencyKey, String requestBody) {
+    private record Work(Payment payment, UUID token) { }
 
-        // ---- TX 1: 멱등 + SeatHold 검증 + amount 검증 + Payment 생성 -------------
+    public Payment pay(UUID holderId, UUID holdId, long amount,
+                       String idempotencyKey, String requestBody) {
+        if (idempotencyKey == null || idempotencyKey.isBlank() || idempotencyKey.length() > 80) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "Idempotency-Key는 1~80자여야 합니다.");
+        }
         String requestHash = sha256Hex(requestBody);
-        Payment payment = txTemplate.execute(status -> {
+        Work work = txTemplate.execute(status -> {
+            // 같은 키가 서로 다른 hold로 동시에 들어오는 경우도 직렬화한다. TX 종료 시 자동 해제.
+            jdbc.query("select pg_advisory_xact_lock(hashtextextended(?, 0))",
+                    rs -> { return null; }, "payment-user:" + holderId);
             Optional<IdempotencyKey> existing = idempotencyKeyRepository.findById(
                     new IdempotencyKey.Id(holderId, idempotencyKey));
             if (existing.isPresent()) {
-                IdempotencyKey ik = existing.get();
-                if (!ik.getRequestHash().equals(requestHash)) {
+                IdempotencyKey key = existing.get();
+                if (!key.getRequestHash().equals(requestHash)) {
                     throw new BusinessException(ErrorCode.IDEMPOTENCY_KEY_CONFLICT,
-                            "같은 Idempotency-Key 로 다른 본문이 들어왔습니다.");
+                            "같은 Idempotency-Key로 다른 본문이 들어왔습니다.");
                 }
                 idempotentReplayCounter.increment();
-                return paymentRepository.findById(ik.getPaymentId())
-                        .orElseThrow(() -> new IllegalStateException(
-                                "idempotency_keys 가 가리키는 payment 가 없음. paymentId=" + ik.getPaymentId()));
+                return new Work(paymentRepository.findById(key.getPaymentId()).orElseThrow(), null);
             }
-
-            // ---- SeatHold 조회 + 본인/상태 검증 -----------------------------------
-            SeatHold hold = seatHoldRepository.findById(holdId)
-                    .orElseThrow(() -> new BusinessException(ErrorCode.SEAT_NOT_FOUND,
-                            "점유 정보를 찾을 수 없습니다. holdId=" + holdId));
+            SeatHold hold = seatHoldRepository.findForUpdate(holdId)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.SEAT_NOT_FOUND, "점유 정보를 찾을 수 없습니다."));
             if (!hold.getHolderId().equals(holderId)) {
-                throw new BusinessException(ErrorCode.SHOW_ACCESS_DENIED,
-                        "본인의 점유만 결제할 수 있습니다.");
+                throw new BusinessException(ErrorCode.SHOW_ACCESS_DENIED, "본인의 점유만 결제할 수 있습니다.");
             }
-            if (!hold.isActive()) {
-                throw new BusinessException(ErrorCode.PAYMENT_ALREADY_SETTLED,
-                        "ACTIVE 가 아닌 점유는 결제할 수 없습니다. status=" + hold.getStatus());
-            }
-
-            // ---- amount 서버 truth 검증 -----------------------------------------
-            // 클라이언트가 보낸 amount 와 SeatHold 좌석의 section basePrice 합이 일치해야 함.
-            // 위변조 + 가격 변동 사이 race + sessionStorage 깨짐 등을 한곳에서 차단.
             long expected = seatHoldViewService.calculateExpectedAmount(hold);
             if (expected != amount) {
-                throw new BusinessException(ErrorCode.PAYMENT_AMOUNT_MISMATCH,
-                        "결제 금액 불일치. expected=" + expected + ", actual=" + amount);
+                throw new BusinessException(ErrorCode.PAYMENT_AMOUNT_MISMATCH, "결제 금액이 일치하지 않습니다.");
             }
-
-            // ---- Payment 영속 ----------------------------------------------------
+            // 새 키라도 처리 중인 같은 hold는 기존 결제로 연결한다. 실패 확정 후에만 새 결제 허용.
+            Optional<Payment> active = paymentRepository.findByHoldId(holdId).stream()
+                    .filter(p -> "PENDING".equals(p.getStatus()) || "APPROVED".equals(p.getStatus()))
+                    .findFirst();
+            if (active.isPresent()) {
+                Payment p = active.get();
+                idempotencyKeyRepository.save(IdempotencyKey.create(holderId, idempotencyKey, requestHash, p.getId()));
+                return new Work(p, null);
+            }
+            if (!hold.isActive() || !hold.getExpiresAt().isAfter(now())) {
+                throw new BusinessException(ErrorCode.PAYMENT_ALREADY_SETTLED, "만료되거나 종료된 점유는 결제할 수 없습니다.");
+            }
             Payment p = Payment.start(holdId, holderId, hold.getScheduleId(), amount);
+            UUID token = p.claim(now().plus(props.getProcessingLease()));
             paymentRepository.save(p);
-            idempotencyKeyRepository.save(
-                    IdempotencyKey.create(holderId, idempotencyKey, requestHash, p.getId()));
+            idempotencyKeyRepository.save(IdempotencyKey.create(holderId, idempotencyKey, requestHash, p.getId()));
+            return new Work(p, token);
+        });
+        if (work.token() == null) return work.payment();
+        long started = System.nanoTime();
+        try {
+            MockPgResponse result = mockPgClient.charge(work.payment().getId(), amount);
+            return settle(work, new PgOrder(result.approved() ? "APPROVED" : "DECLINED",
+                    result.pgTxnId(), result.code(), result.message()));
+        } catch (PgUnavailableException ex) {
+            log.warn("PG result unknown: paymentId={}", work.payment().getId());
+            return defer(work);
+        } finally {
+            pgCallTimer.record(System.nanoTime() - started, TimeUnit.NANOSECONDS);
+        }
+    }
+
+    /** 다중 인스턴스가 같은 목록을 읽어도 payment 행 잠금과 처리 토큰으로 작업권을 획득한다. */
+    public void reconcileDue() {
+        if (!props.isReconcileEnabled()) return;
+        for (UUID id : paymentRepository.findDue(now(), PageRequest.of(0, props.getReconcileBatchSize()))) {
+            try {
+                reconcile(id);
+            } catch (Exception ex) {
+                // 확정 TX 자체가 실패해도 lease 만료 뒤 다시 조회한다. 다른 결제의 복구는 계속한다.
+                log.warn("Payment reconciliation deferred: paymentId={}, cause={}", id, ex.toString());
+            }
+        }
+    }
+
+    public void reconcile(UUID id) {
+        Work work = txTemplate.execute(status -> {
+            Payment p = paymentRepository.findForUpdate(id).orElse(null);
+            if (p == null || !"PENDING".equals(p.getStatus()) || p.getReconcileAt().isAfter(now())) return null;
+            return new Work(p, p.claim(now().plus(props.getProcessingLease())));
+        });
+        if (work == null) return;
+        try {
+            if (work.payment().isCancelRequested()) {
+                completeCancellation(work);
+            } else {
+                settle(work, mockPgClient.lookup(id));
+            }
+        } catch (PgUnavailableException ex) {
+            log.warn("PG reconciliation unavailable: paymentId={}", id);
+            defer(work);
+        }
+    }
+
+    private Payment settle(Work work, PgOrder result) {
+        Payment decided = txTemplate.execute(status -> {
+            Payment p = paymentRepository.findForUpdate(work.payment().getId()).orElseThrow();
+            if (!p.owns(work.token())) return p;
+            if (p.isCancelRequested()) return p;
+            if ("NOT_FOUND".equals(result.status())) {
+                // 늦게 도착한 최초 /pay도 승인되지 않도록 먼저 PG 취소 tombstone을 만든다.
+                p.requestCancellation();
+            } else if ("APPROVED".equals(result.status())) {
+                SeatHold hold = seatHoldRepository.findForUpdate(p.getHoldId()).orElse(null);
+                if (hold == null || !hold.isActive() || !hold.getExpiresAt().isAfter(now())) {
+                    // 취소 의도를 커밋한 뒤 HTTP 호출. 이후 worker는 승인 대신 취소만 수행한다.
+                    p.requestCancellation();
+                } else {
+                    seatHoldService.markSold(p.getHoldId(), p.getHolderId());
+                    p.approve(result.approveNo());
+                    outboxWriter.stage(AGGREGATE_PAYMENT, p.getId(), "PAYMENT_APPROVED", Topics.PAYMENT_APPROVED,
+                            PaymentEventPayloads.approved(objectMapper, p), PaymentEventPayloads.VERSION_V1);
+                    approvedCounter.increment();
+                }
+            } else if ("DECLINED".equals(result.status()) || "CANCELLED".equals(result.status())) {
+                fail(p, "CANCELLED".equals(result.status()) ? "PG_CANCELLED" : "PG_DECLINED",
+                        "CANCELLED".equals(result.status()) ? "PG 취소 확인" : "PG 결제 거절");
+            } else {
+                SeatHold hold = seatHoldRepository.findForUpdate(p.getHoldId()).orElse(null);
+                if (hold == null || !hold.isActive() || !hold.getExpiresAt().isAfter(now())) p.requestCancellation();
+                else p.retryAt(now().plus(props.getReconcileRetry()));
+            }
             return p;
         });
+        if (decided.owns(work.token()) && decided.isCancelRequested()) return completeCancellation(work);
+        return decided;
+    }
 
-        // 멱등 응답: 이미 처리된 결제는 그대로 반환 (PG 호출 안 함).
-        if (!"PENDING".equals(payment.getStatus())) {
-            log.debug("idempotent replay returning payment id={}, status={}",
-                    payment.getId(), payment.getStatus());
-            return payment;
-        }
-
-        // ---- 외부: PG 호출 (TX 밖) --------------------------------------------
-        MockPgResponse pgResponse;
-        boolean pgUnavailable = false;
-        long startNanos = System.nanoTime();
-        try {
-            pgResponse = mockPgClient.charge(payment.getId(), payment.getAmount());
-            pgCallTimer.record(System.nanoTime() - startNanos, TimeUnit.NANOSECONDS);
-        } catch (PgUnavailableException ex) {
-            pgCallTimer.record(System.nanoTime() - startNanos, TimeUnit.NANOSECONDS);
-            log.warn("PG unavailable for payment id={}: {}", payment.getId(), ex.getMessage());
-            pgResponse = null;
-            pgUnavailable = true;
-        }
-
-        // ---- TX 2: finalize ---------------------------------------------------
-        final MockPgResponse finalPgResponse = pgResponse;
-        final boolean finalPgUnavailable = pgUnavailable;
-        final UUID paymentId = payment.getId();
+    private Payment completeCancellation(Work work) {
+        mockPgClient.cancel(work.payment().getId());
         return txTemplate.execute(status -> {
-            Payment p = paymentRepository.findById(paymentId).orElseThrow();
-            if (!"PENDING".equals(p.getStatus())) {
-                // 누군가 이미 finalize 했음 (멀티 스레드 동시 진입 — 사실상 없음). 그대로 반환.
-                return p;
-            }
-
-            if (finalPgUnavailable) {
-                // PG 호출 자체 실패. 정책: FAILED 로 즉시 마킹 + outbox.
-                if (!props.isFailOnPgError()) {
-                    // 정책이 PENDING 유지인 경우엔 그대로 둠. reconciler 가 처리.
-                    return p;
-                }
-                p.fail("PG_UNAVAILABLE", "PG 호출 실패 — 일시 장애 또는 네트워크 오류");
-                outboxWriter.stage(AGGREGATE_PAYMENT, p.getId(),
-                        "PAYMENT_FAILED", Topics.PAYMENT_FAILED,
-                        PaymentEventPayloads.failed(objectMapper, p),
-                        PaymentEventPayloads.VERSION_V1);
-                failedCounter.increment();
-                return p;
-            }
-
-            if (finalPgResponse.approved()) {
-                // ---- 승인 흐름 -----------------------------------------------
-                // SeatHold + Seat SOLD 전이는 SeatHoldService 가 책임 + 자체 outbox SEAT_SOLD.
-                seatHoldService.markSold(p.getHoldId(), p.getHolderId());
-                p.approve(finalPgResponse.pgTxnId());
-                outboxWriter.stage(AGGREGATE_PAYMENT, p.getId(),
-                        "PAYMENT_APPROVED", Topics.PAYMENT_APPROVED,
-                        PaymentEventPayloads.approved(objectMapper, p),
-                        PaymentEventPayloads.VERSION_V1);
-                approvedCounter.increment();
-                log.debug("payment APPROVED: id={}, pgTxn={}", p.getId(), p.getPgTxnId());
-                return p;
-            }
-
-            // ---- 거절 흐름 ---------------------------------------------------
-            p.fail(finalPgResponse.code() != null ? finalPgResponse.code() : "PG_DECLINED",
-                    finalPgResponse.message());
-            outboxWriter.stage(AGGREGATE_PAYMENT, p.getId(),
-                    "PAYMENT_FAILED", Topics.PAYMENT_FAILED,
-                    PaymentEventPayloads.failed(objectMapper, p),
-                    PaymentEventPayloads.VERSION_V1);
-            failedCounter.increment();
-            log.debug("payment FAILED: id={}, code={}", p.getId(), p.getFailCode());
+            Payment p = paymentRepository.findForUpdate(work.payment().getId()).orElseThrow();
+            if (p.owns(work.token()) && p.isCancelRequested()) fail(p, "PG_CANCELLED", "점유 종료 또는 미접수 결제의 PG 취소 확인");
             return p;
         });
     }
+
+    private void fail(Payment p, String code, String reason) {
+        p.fail(code, reason);
+        outboxWriter.stage(AGGREGATE_PAYMENT, p.getId(), "PAYMENT_FAILED", Topics.PAYMENT_FAILED,
+                PaymentEventPayloads.failed(objectMapper, p), PaymentEventPayloads.VERSION_V1);
+        failedCounter.increment();
+    }
+
+    private Payment defer(Work work) {
+        return txTemplate.execute(status -> {
+            Payment p = paymentRepository.findForUpdate(work.payment().getId()).orElseThrow();
+            if (p.owns(work.token())) p.retryAt(now().plus(props.getReconcileRetry()));
+            return p;
+        });
+    }
+
+    private OffsetDateTime now() { return OffsetDateTime.now(clock); }
 
     /** 본인이 시작한 결제 단건 조회. */
     public Payment getMyPayment(UUID paymentId, UUID requesterId) {

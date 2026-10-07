@@ -5,6 +5,8 @@ import com.ticketing.pricing.PricingIntegrationTestBase;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -52,25 +54,31 @@ class PricingCandleIntegrationTest extends PricingIntegrationTestBase {
         jdbc.update("DELETE FROM pricing_ticks");
     }
 
-    @Test
-    @DisplayName("같은 1분 bucket 안 여러 tick → open/high/low/close 정확히 계산")
-    void ohlc_correctlyAggregated() {
+    @ParameterizedTest(name = "historicalBackfill={0}")
+    @ValueSource(booleans = {true, false})
+    @DisplayName("과거 backfill과 최근 tick의 OHLC 집계")
+    void ohlc_correctlyAggregated(boolean historicalBackfill) {
         UUID sectionId = UUID.randomUUID();
         UUID scheduleId = UUID.randomUUID();
 
         // 같은 분(minute) 안의 4개 tick — 초 단위로 다르게.
         // 시퀀스: 10000(open) → 11000 → 9500(low) → 10500(close). high=11000.
-        Instant base = Instant.parse("2025-06-01T12:00:00Z");
+        // 과거 backfill 시각은 고정 날짜가 아니라 "지금 기준 30일 전"으로 잡는다.
+        // V009 의 retention 정책이 raw tick 을 90일 뒤 지우므로, 고정 날짜는 시간이 지나면
+        // 보존 기간 밖으로 밀려 집계되지 않는다(2025-06-01 고정값이 2026-10 에 깨진 원인).
+        Instant base = jdbc.queryForObject(historicalBackfill
+                        ? "SELECT date_trunc('minute', now()) - interval '30 days'"
+                        : "SELECT date_trunc('minute', now()) - interval '2 minutes'",
+                java.sql.Timestamp.class).toInstant();
         insertTick(sectionId, scheduleId, 10000, base);
         insertTick(sectionId, scheduleId, 11000, base.plusSeconds(10));
         insertTick(sectionId, scheduleId, 9500,  base.plusSeconds(20));
         insertTick(sectionId, scheduleId, 10500, base.plusSeconds(30));
 
-        // CAgg 즉시 refresh — 지금 시각과 무관하게 위 데이터가 있는 시간 범위를 명시.
-        // 정책이 아니라 CALL refresh_continuous_aggregate(view, start, end).
-        jdbc.execute("CALL refresh_continuous_aggregate('pricing_candles_1m', "
-                + "'2025-06-01 11:59:00+00'::timestamptz, "
-                + "'2025-06-01 12:02:00+00'::timestamptz)");
+        // 과거 backfill은 강제 재집계하고, 최근 완료된 bucket은 일반 refresh로 검증한다.
+        jdbc.execute("CALL refresh_continuous_aggregate('pricing_candles_1m', '"
+                + base.minusSeconds(60) + "'::timestamptz, '"
+                + base.plusSeconds(120) + "'::timestamptz, force => " + historicalBackfill + ")");
 
         // 조회.
         RestTemplate rt = new RestTemplate();
@@ -84,7 +92,7 @@ class PricingCandleIntegrationTest extends PricingIntegrationTestBase {
         java.util.List<?> candles = (java.util.List<?>) res.getBody().get("candles");
         assertThat(candles).as("최소 1개 캔들이 있어야 한다").isNotEmpty();
 
-        // 첫 캔들 (최근순이므로 12:00 bucket) OHLC 검증.
+        // 해당 구역의 최신 bucket OHLC 검증.
         @SuppressWarnings("unchecked")
         java.util.Map<String, Object> latest = (java.util.Map<String, Object>) candles.get(0);
         assertThat(((Number) latest.get("open")).longValue()).isEqualTo(10000);

@@ -1,0 +1,384 @@
+{
+  "scannedAt": "2026-10-05T11:28:52.763919+00:00",
+  "scanner": "Trivy 0.75.0",
+  "scope": "Five exact running LGTM image IDs, OS and bundled language vulnerabilities; no exclusions.",
+  "images": [
+    {
+      "service": "otel-collector",
+      "image": "ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.162.0@sha256:39923a8e431bd1f57be82411999d389fcfe40857492e4365456d97a4c1f74be6",
+      "imageId": "sha256:39923a8e431bd1f57be82411999d389fcfe40857492e4365456d97a4c1f74be6",
+      "os": null,
+      "counts": {
+        "UNKNOWN": 1
+      },
+      "findings": [
+        {
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "installed": "v0.57.0",
+          "fixed": "",
+          "severity": "UNKNOWN"
+        }
+      ]
+    },
+    {
+      "service": "loki",
+      "image": "grafana/loki:3.7.8@sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193",
+      "imageId": "sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193",
+      "os": {
+        "Family": "debian",
+        "Name": "13.7"
+      },
+      "counts": {
+        "MEDIUM": 2,
+        "LOW": 4,
+        "UNKNOWN": 1
+      },
+      "findings": [
+        {
+          "id": "CVE-2026-81871",
+          "package": "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc",
+          "installed": "v0.19.0",
+          "fixed": "0.21.0",
+          "severity": "MEDIUM"
+        },
+        {
+          "id": "CVE-2026-81870",
+          "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+          "installed": "v1.44.0",
+          "fixed": "1.45.0",
+          "severity": "LOW"
+        },
+        {
+          "id": "CVE-2026-81870",
+          "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+          "installed": "v1.44.0",
+          "fixed": "1.45.0",
+          "severity": "LOW"
+        },
+        {
+          "id": "CVE-2026-81870",
+          "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
+          "installed": "v1.44.0",
+          "fixed": "1.45.0",
+          "severity": "LOW"
+        },
+        {
+          "id": "CVE-2026-81870",
+          "package": "go.opentelemetry.io/otel/sdk",
+          "installed": "v1.44.0",
+          "fixed": "1.45.0",
+          "severity": "LOW"
+        },
+        {
+          "id": "CVE-2026-81872",
+          "package": "go.opentelemetry.io/otel/sdk/log",
+          "installed": "v0.19.0",
+          "fixed": "0.21.0",
+          "severity": "MEDIUM"
+        },
+        {
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "installed": "v0.56.0",
+          "fixed": "",
+          "severity": "UNKNOWN"
+        }
+      ]
+    },
+    {
+      "service": "tempo",
+      "image": "grafana/tempo:3.1.0@sha256:3076b8dcdfb32fd6bc5ccef85e7b7313e6199b9cb84366257fc17ecb696db5fd",
+      "imageId": "sha256:3076b8dcdfb32fd6bc5ccef85e7b7313e6199b9cb84366257fc17ecb696db5fd",
+      "os": {
+        "Family": "debian",
+        "Name": "12.15"
+      },
+      "counts": {
+        "UNKNOWN": 2,
+        "MEDIUM": 2,
+        "LOW": 4
+      },
+      "findings": [
+        {
+          "id": "DLA-4792-1",
+          "package": "tzdata",
+          "installed": "2026b-0+deb12u1",
+          "fixed": "2026c-0+deb12u1",
+          "severity": "UNKNOWN"
+        },
+        {
+          "id": "CVE-2026-81871",
+          "package": "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc",
+          "installed": "v0.20.0",
+          "fixed": "0.21.0",
+          "severity": "MEDIUM"
+        },
+        {
+          "id": "CVE-2026-81870",
+          "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+          "installed": "v1.44.0",
+          "fixed": "1.45.0",
+          "severity": "LOW"
+        },
+        {
+          "id": "CVE-2026-81870",
+          "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+          "installed": "v1.44.0",
+          "fixed": "1.45.0",
+          "severity": "LOW"
+        },
+        {
+          "id": "CVE-2026-81870",
+          "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
+          "installed": "v1.44.0",
+          "fixed": "1.45.0",
+          "severity": "LOW"
+        },
+        {
+          "id": "CVE-2026-81870",
+          "package": "go.opentelemetry.io/otel/sdk",
+          "installed": "v1.44.0",
+          "fixed": "1.45.0",
+          "severity": "LOW"
+        },
+        {
+          "id": "CVE-2026-81872",
+          "package": "go.opentelemetry.io/otel/sdk/log",
+          "installed": "v0.20.0",
+          "fixed": "0.21.0",
+          "severity": "MEDIUM"
+        },
+        {
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "installed": "v0.56.0",
+          "fixed": "",
+          "severity": "UNKNOWN"
+        }
+      ]
+    },
+    {
+      "service": "mimir",
+      "image": "grafana/mimir:3.2.1@sha256:92838f113ba54230014e79bc812e57ca90bb9ebc06e665f59e4f700098c2dd04",
+      "imageId": "sha256:92838f113ba54230014e79bc812e57ca90bb9ebc06e665f59e4f700098c2dd04",
+      "os": {
+        "Family": "debian",
+        "Name": "13.5"
+      },
+      "counts": {
+        "MEDIUM": 2,
+        "LOW": 4,
+        "UNKNOWN": 1
+      },
+      "findings": [
+        {
+          "id": "CVE-2026-81871",
+          "package": "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc",
+          "installed": "v0.20.0",
+          "fixed": "0.21.0",
+          "severity": "MEDIUM"
+        },
+        {
+          "id": "CVE-2026-81870",
+          "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+          "installed": "v1.44.0",
+          "fixed": "1.45.0",
+          "severity": "LOW"
+        },
+        {
+          "id": "CVE-2026-81870",
+          "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+          "installed": "v1.44.0",
+          "fixed": "1.45.0",
+          "severity": "LOW"
+        },
+        {
+          "id": "CVE-2026-81870",
+          "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
+          "installed": "v1.44.0",
+          "fixed": "1.45.0",
+          "severity": "LOW"
+        },
+        {
+          "id": "CVE-2026-81870",
+          "package": "go.opentelemetry.io/otel/sdk",
+          "installed": "v1.44.0",
+          "fixed": "1.45.0",
+          "severity": "LOW"
+        },
+        {
+          "id": "CVE-2026-81872",
+          "package": "go.opentelemetry.io/otel/sdk/log",
+          "installed": "v0.20.0",
+          "fixed": "0.21.0",
+          "severity": "MEDIUM"
+        },
+        {
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "installed": "v0.56.0",
+          "fixed": "",
+          "severity": "UNKNOWN"
+        }
+      ]
+    },
+    {
+      "service": "grafana",
+      "image": "grafana/grafana:13.2.3@sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572",
+      "imageId": "sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572",
+      "os": {
+        "Family": "alpine",
+        "Name": "3.24.2"
+      },
+      "counts": {
+        "MEDIUM": 4,
+        "LOW": 3,
+        "UNKNOWN": 5,
+        "HIGH": 8
+      },
+      "findings": [
+        {
+          "id": "CVE-2026-58055",
+          "package": "nghttp2-libs",
+          "installed": "1.69.0-r0",
+          "fixed": "1.70.0-r0",
+          "severity": "MEDIUM"
+        },
+        {
+          "id": "CVE-2026-81870",
+          "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+          "installed": "v1.44.0",
+          "fixed": "1.45.0",
+          "severity": "LOW"
+        },
+        {
+          "id": "CVE-2026-81870",
+          "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+          "installed": "v1.44.0",
+          "fixed": "1.45.0",
+          "severity": "LOW"
+        },
+        {
+          "id": "CVE-2026-81870",
+          "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
+          "installed": "v1.44.0",
+          "fixed": "1.45.0",
+          "severity": "LOW"
+        },
+        {
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "installed": "v0.56.0",
+          "fixed": "",
+          "severity": "UNKNOWN"
+        },
+        {
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "installed": "v0.56.0",
+          "fixed": "",
+          "severity": "UNKNOWN"
+        },
+        {
+          "id": "CVE-2026-84445",
+          "package": "google.golang.org/grpc",
+          "installed": "v1.83.1",
+          "fixed": "1.82.2, 1.83.2, 1.84.0-dev.0.20260825144003-d5a41119e0e3, 1.85.0-dev.0.20260825072537-93e31b48545e",
+          "severity": "HIGH"
+        },
+        {
+          "id": "CVE-2026-84445",
+          "package": "google.golang.org/grpc",
+          "installed": "v1.83.1",
+          "fixed": "1.82.2, 1.83.2, 1.84.0-dev.0.20260825144003-d5a41119e0e3, 1.85.0-dev.0.20260825072537-93e31b48545e",
+          "severity": "HIGH"
+        },
+        {
+          "id": "CVE-2026-84445",
+          "package": "google.golang.org/grpc",
+          "installed": "v1.83.1",
+          "fixed": "1.82.2, 1.83.2, 1.84.0-dev.0.20260825144003-d5a41119e0e3, 1.85.0-dev.0.20260825072537-93e31b48545e",
+          "severity": "HIGH"
+        },
+        {
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "installed": "v0.56.0",
+          "fixed": "",
+          "severity": "UNKNOWN"
+        },
+        {
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "installed": "v0.56.0",
+          "fixed": "",
+          "severity": "UNKNOWN"
+        },
+        {
+          "id": "CVE-2026-84445",
+          "package": "google.golang.org/grpc",
+          "installed": "v1.83.1",
+          "fixed": "1.82.2, 1.83.2, 1.84.0-dev.0.20260825144003-d5a41119e0e3, 1.85.0-dev.0.20260825072537-93e31b48545e",
+          "severity": "HIGH"
+        },
+        {
+          "id": "CVE-2026-56855",
+          "package": "golang.org/x/crypto",
+          "installed": "v0.55.0",
+          "fixed": "0.56.0",
+          "severity": "MEDIUM"
+        },
+        {
+          "id": "CVE-2026-78662",
+          "package": "golang.org/x/crypto",
+          "installed": "v0.55.0",
+          "fixed": "0.56.0",
+          "severity": "MEDIUM"
+        },
+        {
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "installed": "v0.55.0",
+          "fixed": "",
+          "severity": "UNKNOWN"
+        },
+        {
+          "id": "CVE-2026-84304",
+          "package": "google.golang.org/grpc",
+          "installed": "v1.83.0",
+          "fixed": "1.83.1",
+          "severity": "HIGH"
+        },
+        {
+          "id": "CVE-2026-84445",
+          "package": "google.golang.org/grpc",
+          "installed": "v1.83.0",
+          "fixed": "1.82.2, 1.83.2, 1.84.0-dev.0.20260825144003-d5a41119e0e3, 1.85.0-dev.0.20260825072537-93e31b48545e",
+          "severity": "HIGH"
+        },
+        {
+          "id": "CVE-2026-84303",
+          "package": "google.golang.org/grpc",
+          "installed": "v1.83.0",
+          "fixed": "1.83.1",
+          "severity": "MEDIUM"
+        },
+        {
+          "id": "CVE-2026-21728",
+          "package": "github.com/grafana/tempo",
+          "installed": "v1.5.1-0.20260910130453-bcfe9f230c1d",
+          "fixed": "2.8.4, 2.9.2, 2.10.2",
+          "severity": "HIGH"
+        },
+        {
+          "id": "CVE-2026-28377",
+          "package": "github.com/grafana/tempo",
+          "installed": "v1.5.1-0.20260910130453-bcfe9f230c1d",
+          "fixed": "2.10.3",
+          "severity": "HIGH"
+        }
+      ]
+    }
+  ]
+}

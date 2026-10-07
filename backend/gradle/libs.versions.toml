@@ -6,8 +6,8 @@
 #
 # 큰 결정:
 #   - Spring Boot 3.5.x: Java 17 LTS와 호환되는 가장 최신 안정 라인.
-#   - Spring Cloud 2023.0.x: Boot 3.5 매트릭스 (Stream/Sleuth 대신 Micrometer로 이주됨).
-#   - Redisson 3.32.x: Reactive 의존성 없는 Spring Boot 3 starter 사용 → 좌석 분산락 핵심.
+#   - Spring Cloud 2025.0.x: Boot 3.5와 함께 사용하는 BOM.
+#   - Redisson 3.52.x: Spring Boot 3 starter 사용 → 좌석 분산락 핵심.
 #   - JJWT 0.12.x: 0.11 대비 API가 새로 갈렸으므로 신버전 고정.
 #   - Bucket4j 8.10.x: Redis 백엔드(jcache-redis)로 분산 토큰 버킷 → 채널별 알림 quota·레이트리밋.
 #   - OpenTelemetry starter 2.32: micrometer-tracing 와 함께 OTLP/HTTP 익스포터 자동 구성.

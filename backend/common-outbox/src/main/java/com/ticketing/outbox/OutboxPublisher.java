@@ -38,7 +38,8 @@ import java.util.concurrent.TimeUnit;
  * <ul>
  *   <li>발행 후 ACK 받기 전 publisher 가 죽으면 같은 record 가 재시도되어 Kafka 중복 발생 가능.
  *       consumer 의 eventId 기반 dedup 으로 정확한 1회 처리 보장.</li>
- *   <li>다중 인스턴스 환경 시 SELECT FOR UPDATE SKIP LOCKED 필요 (Phase 6).</li>
+ *   <li>다중 인스턴스 환경은 {@code scan()} 의 ShedLock 으로 한 인스턴스만 발행한다.
+ *       행 단위 SELECT FOR UPDATE SKIP LOCKED 는 쓰지 않는다 (ADR-0002).</li>
  * </ul>
  */
 @Component

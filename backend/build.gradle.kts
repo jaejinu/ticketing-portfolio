@@ -3,7 +3,7 @@ import java.io.File
 // =============================================================================
 // 루트 build.gradle.kts — 모든 서브프로젝트 공통 설정
 // -----------------------------------------------------------------------------
-// 여기 정의한 내용은 subprojects { } 블록 안에서 11개 모듈 전체에 일괄 적용된다.
+// 여기 정의한 내용은 subprojects { } 블록 안에서 12개 모듈 전체에 일괄 적용된다.
 // 모듈마다 똑같은 boilerplate 를 반복하지 않으려는 목적이다.
 //
 // 주의: app-gateway 만 spring-boot 플러그인을 "apply true" 한다 (executable jar 생성).
@@ -32,7 +32,7 @@ subprojects {
     group = "com.ticketing"
     version = "0.0.1-SNAPSHOT"
 
-    // Java 17 — Spring Boot 3.3 의 최소 요구 버전과 일치.
+    // Java 17 — Spring Boot 3.5 의 최소 요구 버전과 일치.
     java {
         toolchain {
             languageVersion.set(JavaLanguageVersion.of(17))

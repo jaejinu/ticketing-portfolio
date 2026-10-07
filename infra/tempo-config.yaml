@@ -4,8 +4,6 @@
 # OTel Collector가 OTLP gRPC로 push → Tempo에서 trace_id로 조회.
 # =============================================================================
 
-stream_over_http_enabled: true
-
 server:
   http_listen_port: 3200
   log_level: warn
@@ -19,12 +17,8 @@ distributor:
         grpc:
           endpoint: 0.0.0.0:4317
 
-ingester:
-  max_block_duration: 5m
-
-compactor:
-  compaction:
-    block_retention: 24h  # 로컬에서 1일치만 유지 — 디스크 절약.
+# Tempo 3 monolithic mode: no Kafka dependency; live-store replaces ingester.
+target: all
 
 metrics_generator:
   registry:
@@ -47,5 +41,7 @@ storage:
 
 overrides:
   defaults:
+    compaction:
+      block_retention: 24h
     metrics_generator:
       processors: [service-graphs, span-metrics]

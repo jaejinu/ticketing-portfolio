@@ -37,8 +37,8 @@ import java.util.UUID;
  *       별도 엔티티(SeatHoldItem) 만들 가치가 없을 만큼 단순 식별자 집합이라.
  *       hold 당 좌석 4 이내이므로 LAZY 로딩 비용 무시 가능.</li>
  *   <li>status 는 String 상수({@link SeatHoldStatus}) — enum 매핑 통증 회피.</li>
- *   <li>낙관적 락(@Version) 은 생략. 상태 전이는 분산락(Redisson) 으로 직렬화되고,
- *       동일 hold 를 두 곳에서 동시에 release 할 시나리오는 application 레이어에서 막는다.</li>
+ *   <li>낙관적 락(@Version) 은 생략. 생성은 Redisson 좌석 락으로 보호하며,
+ *       해제·만료·판매 확정은 SeatHold 행의 쓰기 잠금으로 직렬화한다.</li>
  *   <li>created_at / expires_at 은 entity 생성 시점 1회 셋. 이후 불변.
  *       released_at 만 변경된다 (RELEASED 전이 시점 기록).</li>
  * </ul>
@@ -192,7 +192,7 @@ public class SeatHold {
 
     /** 결제 확정 시 SOLD 전이. (Phase 5) */
     public void markSold(OffsetDateTime now) {
-        if (!SeatHoldStatus.ACTIVE.equals(this.status)) {
+        if (!SeatHoldStatus.ACTIVE.equals(this.status) || !expiresAt.isAfter(now)) {
             throw new BusinessException(ErrorCode.PAYMENT_ALREADY_SETTLED,
                     "ACTIVE 가 아닌 hold 는 SOLD 로 전이할 수 없습니다. holdId=" + id);
         }

@@ -30,13 +30,18 @@ Publisher 구현은 두 가지가 있다.
 
 **Polling Publisher**.
 
-- Spring `@Scheduled(fixedDelay=500ms)` 단일 워커.
-- `SELECT ... FOR UPDATE SKIP LOCKED LIMIT 100` 으로 배치 처리 (멀티 인스턴스 안전).
-- 발행 성공 → `UPDATE outbox_events SET published_at = NOW()` 같은 트랜잭션.
-- 실패 → `attempt_count` 증가, 일정 횟수(5회) 초과 시 `dead_letter` 컬럼 마킹 + 운영자 알람.
-- 컨슈머 측은 envelope `eventId`로 멱등 처리 (재발행 안전).
+아래는 결정 당시의 계획이 아니라 **지금 구현된 방식**이다(`common-outbox/OutboxPublisher.java`, `V002__outbox.sql`).
 
-부분 인덱스로 효율화: `CREATE INDEX outbox_unpublished ON outbox_events(occurred_at) WHERE published_at IS NULL;`
+- Spring `@Scheduled(fixedDelay = app.outbox.scan-interval, 기본 1초)` 워커.
+- **멀티 인스턴스 단일 실행은 ShedLock**(`@SchedulerLock(name = "outbox-publish")`)으로 보장한다. 행 단위 `SELECT ... FOR UPDATE SKIP LOCKED`는 쓰지 않는다. 한 시점에 한 인스턴스만 발행하므로 행 잠금 없이도 같은 레코드를 두 워커가 동시에 집지 않는다.
+- 한 틱에 `batch-size`(기본 50)씩, 적체가 있으면 최대 20배치까지 연속 처리한다(적체 따라잡기 상한).
+- 레코드마다 별도 트랜잭션: Kafka 전송을 `send(...).get(send-timeout)`으로 동기 확인한 뒤 `PUBLISHED`로 표시한다.
+- 실패 → `retry_count` 증가, 지수 백오프로 `next_attempt_at`을 미룬다. `max-retries`(기본 10회)를 넘으면 상태를 `FAILED`로 격리하고 `app.outbox.failed` 지표와 에러 로그를 남긴다. 별도 알람 연동은 없다.
+- 컨슈머 측은 envelope `eventId`로 멱등 처리한다(최소 1회 전달 → 중복 수신 안전).
+
+부분 인덱스 `outbox_events_pending_idx`(`next_attempt_at`, `WHERE status = 'PENDING'`)로 발행 대상을 고른다.
+
+> 다중 발행 워커가 동시에 돌아야 할 만큼 처리량이 커지면 그때 `FOR UPDATE SKIP LOCKED` 배치 선점이나 Debezium으로 옮긴다(아래 "미래 옵션").
 
 ## Consequences — 무엇이 따라오는가
 
@@ -46,7 +51,7 @@ Publisher 구현은 두 가지가 있다.
 - 학습 가치: 학생이 "트랜잭션 안에 이벤트 적재 + 별도 워커가 발행"이라는 패턴을 직접 손으로 짠다.
 
 ### 감수해야 할 비용
-- **lag ~500ms**: 가격 알람 평가 같은 실시간성 KPI에는 무관(틱은 outbox 안 거치는 별도 경로). 단, **결제 완료 → 발권 알림** 흐름이 500ms 추가 지연. 합격선 3s 안에는 여유.
+- **lag 최대 약 1초**(기본 scan-interval): 가격 알람 평가 같은 실시간성 KPI에는 무관(틱은 outbox 안 거치는 별도 경로). 단, **결제 완료 → 발권 알림** 흐름이 그만큼 추가 지연. 합격선 3s 안에는 여유.
 - **DB 부하**: 단일 노드 시연 규모(<10k tps)에서는 무시 가능. 부분 인덱스 + LIMIT 으로 방어.
 - **Cold start**: 미발행이 쌓인 상태로 app 시작하면 한 번에 N개를 push 시도 → Kafka 측 백프레셔 모니터링 필요 (Phase 9 `outbox.lag.size` 패널).
 

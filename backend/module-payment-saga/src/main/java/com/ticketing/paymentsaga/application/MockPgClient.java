@@ -1,10 +1,12 @@
 package com.ticketing.paymentsaga.application;
 
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -21,7 +23,7 @@ import java.util.UUID;
  *   POST /pay { orderId, amount, cardToken }
  *     200 { code:"APPROVED", approveNo, ... }   → 승인
  *     402 { code:"LIMIT_EXCEEDED", message }    → 거절 (보상 없이 FAILED 안내)
- *     504 { code:"GATEWAY_TIMEOUT" }            → 게이트웨이 지연 (PG 장애로 취급)
+ *     지연 승인 → 클라이언트 timeout 뒤 GET /payments/{orderId}로 결과 확인
  * </pre>
  *
  * <h2>왜 RestClient 인가</h2>
@@ -33,22 +35,67 @@ import java.util.UUID;
  * <h2>예외</h2>
  * <p>
  *   HTTP 실패(4xx/5xx/timeout/IO) 는 {@link PgUnavailableException} 으로 변환.
- *   saga 가 잡아서 PaymentStatus.FAILED 로 마킹.
+ *   saga가 PENDING을 유지하고 조회 스케줄러로 승인 여부를 확인한다.
  * </p>
  */
 @Component
 public class MockPgClient {
 
     private final RestClient restClient;
-    private final PaymentProperties props;
 
     public MockPgClient(PaymentProperties props) {
-        this.props = props;
-        // 별도 RestClient.Builder 빈을 만들지 않고 직접 생성 — 단순화.
-        // production 에선 connect timeout / read timeout 분리 + connection pool 설정 권장.
+        Duration timeout = props.getMockPgTimeout();
+        if (timeout == null || timeout.compareTo(Duration.ofMillis(1)) < 0
+                || timeout.compareTo(Duration.ofMillis(Integer.MAX_VALUE)) > 0) {
+            throw new IllegalArgumentException("app.payment.mock-pg-timeout must be between 1ms and 2147483647ms");
+        }
+        // 연결과 응답 읽기에 각각 적용한다. 전체 결제 처리의 총 제한 시간은 아니다.
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(timeout);
+        requestFactory.setReadTimeout(timeout);
         this.restClient = RestClient.builder()
                 .baseUrl(props.getMockPgBaseUrl())
+                .requestFactory(requestFactory)
                 .build();
+    }
+
+    public PgOrder lookup(UUID paymentId) {
+        try {
+            Map<?, ?> response = restClient.get().uri("/payments/{id}", paymentId)
+                    .retrieve().body(Map.class);
+            return parseOrder(response, paymentId, null);
+        } catch (RestClientResponseException ex) {
+            if (ex.getStatusCode().value() == 404) return new PgOrder("NOT_FOUND", null, null, null);
+            throw new PgUnavailableException("PG 조회 실패", ex);
+        } catch (Exception ex) {
+            throw new PgUnavailableException("PG 조회 실패", ex);
+        }
+    }
+
+    public PgOrder cancel(UUID paymentId) {
+        try {
+            Map<?, ?> response = restClient.post().uri("/payments/{id}/cancel", paymentId)
+                    .retrieve().body(Map.class);
+            return parseOrder(response, paymentId, "CANCELLED");
+        } catch (Exception ex) {
+            throw new PgUnavailableException("PG 취소 실패", ex);
+        }
+    }
+
+    private PgOrder parseOrder(Map<?, ?> response, UUID paymentId, String requiredState) {
+        if (response == null || !paymentId.toString().equals(response.get("orderId"))) {
+            throw new PgUnavailableException("PG 주문 응답이 올바르지 않습니다.", null);
+        }
+        String state = response.get("status") instanceof String value ? value : "";
+        String approval = response.get("approveNo") instanceof String value ? value : null;
+        if (!java.util.Set.of("PENDING", "APPROVED", "DECLINED", "CANCELLED").contains(state)
+                || (requiredState != null && !requiredState.equals(state))
+                || ("APPROVED".equals(state) && (approval == null || approval.isBlank()))) {
+            throw new PgUnavailableException("PG 주문 상태가 올바르지 않습니다.", null);
+        }
+        return new PgOrder(state, approval,
+                response.get("code") instanceof String value ? value : null,
+                response.get("message") instanceof String value ? value : null);
     }
 
     /**
@@ -76,17 +123,21 @@ public class MockPgClient {
             if (res == null) {
                 throw new PgUnavailableException("PG 응답이 비어 있습니다.", null);
             }
-            // 200 = 승인. approveNo 를 pgTxnId 로 보존.
+            // HTTP 성공만으로 승인하지 않는다. 불완전한 응답을 거래 번호 "null"로 저장하지 않는다.
+            if (!"APPROVED".equals(res.get("code"))
+                    || !(res.get("approveNo") instanceof String approveNo) || approveNo.isBlank()) {
+                throw new PgUnavailableException("PG 승인 응답이 올바르지 않습니다.", null);
+            }
             return new MockPgResponse(true,
-                    String.valueOf(res.get("approveNo")),
-                    String.valueOf(res.get("code")),
+                    approveNo,
+                    "APPROVED",
                     null);
         } catch (RestClientResponseException ex) {
             // 402 = 카드 거절 — PG 는 정상 동작했고 "결제만" 거절. 보상 대상 아님 → approved=false.
             if (ex.getStatusCode().value() == 402) {
                 return new MockPgResponse(false, null, "LIMIT_EXCEEDED", "카드 한도를 초과했습니다.");
             }
-            // 그 외 4xx/5xx(504 포함) = PG 장애 취급 → saga 가 FAILED 마킹 + 보상.
+            // 그 외 4xx/5xx(504 포함) = PG 장애 취급 → 결과 불명으로 PENDING 유지. 좌석은 즉시 해제하지 않는다.
             throw new PgUnavailableException("PG 호출 실패: " + ex.getMessage(), ex);
         } catch (PgUnavailableException ex) {
             throw ex;

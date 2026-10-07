@@ -27,7 +27,7 @@ import java.util.UUID;
  * <ul>
  *   <li>amount 단위는 원(KRW). BIGINT — 다이나믹 프라이싱 결과가 정수 원.</li>
  *   <li>holder/hold/schedule 의 FK 는 두지 않음 — module 간 DB 결합 회피, application 정합 책임.</li>
- *   <li>낙관적 락 미사용 — 결제 한 건은 saga 단일 진입점이 직렬화.</li>
+ *   <li>낙관적 락 미사용 — 결제 행 잠금과 처리 토큰으로 상태 변경을 직렬화.</li>
  * </ul>
  */
 @Entity
@@ -68,6 +68,15 @@ public class Payment {
     @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
 
+    @Column(name = "processing_token")
+    private UUID processingToken;
+
+    @Column(name = "reconcile_at", nullable = false)
+    private OffsetDateTime reconcileAt;
+
+    @Column(name = "cancel_requested", nullable = false)
+    private boolean cancelRequested;
+
     protected Payment() {
     }
 
@@ -94,6 +103,7 @@ public class Payment {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         this.createdAt = now;
         this.updatedAt = now;
+        if (reconcileAt == null) reconcileAt = now;
     }
 
     @PreUpdate
@@ -138,6 +148,26 @@ public class Payment {
         }
         this.status = PaymentStatus.REFUNDED;
     }
+
+    /** 호출자는 payment 행의 쓰기 잠금을 획득해야 한다. */
+    public UUID claim(OffsetDateTime until) {
+        processingToken = UUID.randomUUID();
+        reconcileAt = until;
+        return processingToken;
+    }
+
+    public boolean owns(UUID token) {
+        return PaymentStatus.PENDING.equals(status) && token != null && token.equals(processingToken);
+    }
+
+    public void retryAt(OffsetDateTime when) {
+        processingToken = null;
+        reconcileAt = when;
+    }
+
+    public void requestCancellation() { cancelRequested = true; }
+    public boolean isCancelRequested() { return cancelRequested; }
+    public OffsetDateTime getReconcileAt() { return reconcileAt; }
 
     // ---- getters -------------------------------------------------------------
 

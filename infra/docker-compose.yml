@@ -20,10 +20,17 @@ networks:
     driver: bridge
 
 volumes:
-  # 데이터 영속화 — `make down`은 유지, `make nuke` 만 삭제.
+  mock-pg-data:
+  # 데이터 영속화 — 일반 볼륨은 `make nuke`로 삭제, external 복원 볼륨은 보존.
   postgres-data:
+    name: ${POSTGRES_DATA_VOLUME:-${COMPOSE_PROJECT_NAME:-ticketing}_postgres-data}
+    external: ${CORE_VOLUMES_EXTERNAL:-false}
   redis-data:
+    name: ${REDIS_DATA_VOLUME:-${COMPOSE_PROJECT_NAME:-ticketing}_redis-data}
+    external: ${CORE_VOLUMES_EXTERNAL:-false}
   kafka-data:
+    name: ${KAFKA_DATA_VOLUME:-${COMPOSE_PROJECT_NAME:-ticketing}_kafka-data}
+    external: ${CORE_VOLUMES_EXTERNAL:-false}
 
 services:
   # ---------------------------------------------------------------------------
@@ -31,7 +38,7 @@ services:
   # ---------------------------------------------------------------------------
   # 좌석/예약/결제/가격이력 모두 단일 DB. 가격이력만 TimescaleDB 하이퍼테이블로.
   postgres:
-    image: timescale/timescaledb:2.16.1-pg16
+    image: ${POSTGRES_IMAGE:-timescale/timescaledb:2.30.2-pg16@sha256:6f139d56042989bd35f50ba5986e492cd32e35cc6778c50be2659add298dc09f}
     container_name: ticketing-postgres
     restart: unless-stopped
     environment:
@@ -67,7 +74,7 @@ services:
   # 좌석 점유 락(SETNX + TTL), 대기열 토큰, 실시간 가격 캐시.
   # appendonly = AOF 활성화 — 로컬에서 재시작해도 락 상태 유지.
   redis:
-    image: redis:7.4-alpine
+    image: ${REDIS_IMAGE:-redis:7.4.11-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499}
     container_name: ticketing-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
@@ -83,15 +90,14 @@ services:
     networks: [ticketing-net]
 
   # ---------------------------------------------------------------------------
-  # Kafka 3.7 (KRaft 단일 노드)
+  # Kafka 4.3 (KRaft 단일 노드)
   # ---------------------------------------------------------------------------
   # 가격 변동 이벤트 / 결제 결과 이벤트 등 비동기 통신.
   # KRaft = Zookeeper 제거. 단일 노드는 broker + controller 역할을 동시에 함.
   # 한계: 단일 노드는 가용성 X — 포트폴리오/로컬 한정. ADR에 명시.
   kafka:
-    # 2025년 8월부터 bitnami는 일반 태그를 bitnamilegacy/* 로 이관 (bitnami/* 는 latest 한정).
-    # 안정 시연을 위해 legacy 레지스트리의 3.7.1 고정 태그를 쓴다.
-    image: bitnamilegacy/kafka:3.7.1
+    # Apache 공식 JVM 이미지. 기존 KRaft 메타데이터/토픽/오프셋을 복원한 볼륨으로 검증.
+    image: ${KAFKA_IMAGE:-apache/kafka:4.3.1@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837}
     container_name: ticketing-kafka
     restart: unless-stopped
     ports:
@@ -107,34 +113,34 @@ services:
     environment:
       # KRaft 핵심 설정 ----------------------------------------------------
       # 노드 ID: 단일 노드라 1로 고정. 클러스터 구성 시 노드마다 다른 값.
-      KAFKA_CFG_NODE_ID: "1"
+      KAFKA_NODE_ID: "1"
       # 한 프로세스가 broker + controller 둘 다.
-      KAFKA_CFG_PROCESS_ROLES: "broker,controller"
+      KAFKA_PROCESS_ROLES: "broker,controller"
       # 컨트롤러 quorum — 단일 노드라 자기 자신만.
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
       # 리스너 정의: 내부(서비스간) + 외부(host) + 컨트롤러.
-      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094,K3D://:9096"
+      KAFKA_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094,K3D://:9096"
       # advertised: 컨테이너 외부(호스트)는 localhost:9092, k3d pod 는 host.k3d.internal:9096.
-      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,EXTERNAL://localhost:${KAFKA_PORT:-9092},K3D://host.k3d.internal:9096"
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,K3D:PLAINTEXT"
-      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
-      # 클러스터 ID — bitnami는 비어있으면 자동 생성하지만, 고정해두면 볼륨 재사용 안정.
-      KAFKA_KRAFT_CLUSTER_ID: ${KAFKA_KRAFT_CLUSTER_ID:-ticketing-kafka-cluster}
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,EXTERNAL://localhost:${KAFKA_PORT:-9092},K3D://host.k3d.internal:9096"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,K3D:PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      # 기존 meta.properties의 cluster.id와 반드시 일치해야 함.
+      CLUSTER_ID: ${KAFKA_KRAFT_CLUSTER_ID:-ticketing-kafka-cluster}
       # 개발 편의 ----------------------------------------------------------
       # 토픽 자동 생성 — 운영에선 false 권장. 로컬에선 편의를 위해 on.
-      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       # 단일 노드라 모든 토픽 RF=1만 가능.
-      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
-      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
-      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: "1"
-      # bitnami 이미지 보안 — 익명 PLAINTEXT 허용.
-      ALLOW_PLAINTEXT_LISTENER: "yes"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      # 기존 Bitnami 볼륨 내부의 data/ 디렉터리를 유지. Apache 실행 UID는 1000.
+      KAFKA_LOG_DIRS: /var/lib/kafka/data/data
     volumes:
-      - kafka-data:/bitnami/kafka
+      - kafka-data:/var/lib/kafka/data
     healthcheck:
       # KRaft 모드에서도 kafka-topics.sh로 메타데이터 조회 가능하면 준비 완료.
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
       interval: 10s
       timeout: 10s
       retries: 12
@@ -142,20 +148,21 @@ services:
     networks: [ticketing-net]
 
   # ---------------------------------------------------------------------------
-  # MailHog — SMTP mock
+  # Mailpit — SMTP mock
   # ---------------------------------------------------------------------------
   # 예매 확정 메일 등 트랜잭션 메일을 잡아 UI에서 확인.
-  # 운영에선 SES/SendGrid로 교체 (NOTIFICATION_EMAIL_MODE=real).
-  mailhog:
-    image: mailhog/mailhog:latest
-    container_name: ticketing-mailhog
+  # 실제 SMTP 연결 대상은 백엔드 SMTP_HOST/SMTP_PORT로 설정.
+  mailpit:
+    # Legacy MAILHOG_* variables remain supported for existing local .env files.
+    image: axllent/mailpit:v1.31.4@sha256:b68349e3a014b90c5610bfb26b2ae36f3892d7b8cf25ee140c6c71c98d2fcf48
+    container_name: ticketing-mailpit
     restart: unless-stopped
     ports:
-      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${MAILHOG_SMTP_PORT:-1025}:1025"  # SMTP
-      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${MAILHOG_UI_PORT:-8025}:8025"    # Web UI
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${MAILPIT_SMTP_PORT:-${MAILHOG_SMTP_PORT:-1025}}:1025"  # SMTP
+      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${MAILPIT_UI_PORT:-${MAILHOG_UI_PORT:-8025}}:8025"    # Web UI
     healthcheck:
-      # mailhog 이미지에는 wget이 포함돼 있다. 8025(UI)가 응답하면 SMTP도 살아있는 것으로 본다.
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8025/"]
+      # 이미지 내장 readiness 명령으로 SMTP/HTTP 준비 상태 확인.
+      test: ["CMD", "/mailpit", "readyz"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -195,6 +202,8 @@ services:
     environment:
       PORT: "8087"
       MOCK_PG_SEED: "${MOCK_PG_SEED:-42}"
+    volumes:
+      - mock-pg-data:/app/data
     ports:
       - "${DEV_BIND_ADDRESS:-127.0.0.1}:${MOCK_PG_PORT:-8087}:8087"
     healthcheck:

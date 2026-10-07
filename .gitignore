@@ -94,3 +94,9 @@ infra/k3d/.k3d/
 # Python audit/load-test caches
 __pycache__/
 *.pyc
+
+# Durable local mock payment records
+infra/mock-services/mock-pg/data/
+
+# Vercel local project link
+.vercel/

@@ -11,7 +11,7 @@
 SHELL := /bin/bash
 
 # 컴포즈 파일 두 개를 합쳐 사용한다.
-# - docker-compose.yml: 핵심 인프라(pg+timescale, redis, kafka, mailhog, fcm-mock)
+# - docker-compose.yml: 핵심 인프라(pg+timescale, redis, kafka, mailpit, fcm-mock)
 # - docker-compose.lgtm.yml: 관측성(LGTM 스택)
 COMPOSE := docker compose -f infra/docker-compose.yml -f infra/docker-compose.lgtm.yml --env-file infra/.env
 
@@ -27,7 +27,7 @@ up:
 	@echo "▶ Postgres+Timescale: localhost:5440  (user/pass: ticket/ticket, db: ticketing)"
 	@echo "▶ Redis:              localhost:6390"
 	@echo "▶ Kafka:              localhost:9092"
-	@echo "▶ MailHog UI:         http://localhost:8025"
+	@echo "▶ Mailpit UI:         http://localhost:8025"
 	@echo "▶ FCM Mock:           http://localhost:8086"
 	@echo "▶ Grafana:            http://localhost:3031  (admin/admin)"
 	@echo "▶ Loki/Tempo/Mimir:   Grafana 안에서 자동 등록됨"

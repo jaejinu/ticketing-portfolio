@@ -40,26 +40,23 @@ processors:
         action: upsert
 
 exporters:
-  # Loki: HTTP push 엔드포인트.
-  # 0.106 contrib에는 "loki" exporter가 있음. 라벨링은 promtail보다 단순.
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
-    default_labels_enabled:
-      exporter: false
-      job: true
+  # Native OTLP replaces the removed Loki exporter. Loki appends /v1/logs.
+  otlp_http/loki:
+    endpoint: http://loki:3100/otlp
 
   # Tempo: OTLP gRPC로 그대로 전달. Tempo가 OTLP를 네이티브로 받음.
-  otlp/tempo:
+  otlp_grpc/tempo:
     endpoint: tempo:4317
     tls:
       insecure: true
 
   # Mimir: Prometheus remote_write 인터페이스.
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: http://mimir:9009/api/v1/push
     tls:
       insecure: true
-    # 외부에서 들어온 메트릭에 _total 등 누락된 접미사 자동 보정 안 함 — 백엔드 SDK 책임.
+    # Keep standard Prometheus suffixes used by the KPI dashboard.
+    add_metric_suffixes: true
 
   # 디버깅 — 콜렉터 로그에 텔레메트리 일부 찍어보기 (필요 시 service에 추가).
   debug:
@@ -69,16 +66,16 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch, resource]
-      exporters: [otlp/tempo]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp_grpc/tempo]
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, batch, resource]
-      exporters: [prometheusremotewrite]
+      processors: [memory_limiter, resource, batch]
+      exporters: [prometheus_remote_write]
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, batch, resource]
-      exporters: [loki]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp_http/loki]
 
   telemetry:
     logs:

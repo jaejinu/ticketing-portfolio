@@ -2,6 +2,8 @@ package com.ticketing.wsbridge;
 
 import com.ticketing.wsbridge.auth.StompAuthChannelInterceptor;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Value;
+import java.util.Arrays;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
@@ -39,7 +41,7 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
  * <h2>CORS</h2>
  * <p>
  *   handshake 시 Origin 검증. 로컬 frontend(3000, 3100) 와 운영 도메인 화이트리스트.
- *   {@code setAllowedOriginPatterns} 는 와일드카드(*)+credential 지원, 신버전 Spring 권장.
+ *   REST CORS와 같은 설정의 정확한 origin 목록을 사용한다.
  * </p>
  */
 @Configuration
@@ -48,8 +50,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final StompAuthChannelInterceptor authInterceptor;
 
-    public WebSocketConfig(StompAuthChannelInterceptor authInterceptor) {
+    private final String[] allowedOrigins;
+
+    public WebSocketConfig(StompAuthChannelInterceptor authInterceptor,
+            @Value("${app.auth.cors.allowed-origins:http://localhost:3000,http://localhost:3100,http://localhost:3002}") String origins) {
         this.authInterceptor = authInterceptor;
+        this.allowedOrigins = Arrays.stream(origins.split(",")).map(String::trim)
+                .filter(origin -> !origin.isEmpty()).toArray(String[]::new);
     }
 
     @Override
@@ -64,13 +71,11 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         // 3002: 로컬에서 3000 이 다른 dev 서버에 점유될 때 Next 가 옮겨가는 포트.
         // application-local.yml 의 app.auth.cors.allowed-origins 와 세트로 유지할 것.
         registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns(
-                        "http://localhost:3000", "http://localhost:3100", "http://localhost:3002")
+                .setAllowedOrigins(allowedOrigins)
                 .withSockJS();
         // 신버전 클라이언트는 raw WebSocket 도 사용 가능.
         registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns(
-                        "http://localhost:3000", "http://localhost:3100", "http://localhost:3002");
+                .setAllowedOrigins(allowedOrigins);
     }
 
     @Override

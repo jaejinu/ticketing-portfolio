@@ -6,7 +6,7 @@ Hybrid v1 디자인을 적용한 티켓 예매 프론트엔드입니다. 홈·�
 
 ## 디자인 시스템과 화면 구조
 
-- 기준: Hybrid v1. 공개본에서는 내부 Figma 공유 URL을 제외했으며, 아래 토큰·컴포넌트·상태 명세와 구현 코드를 제공합니다.
+- 기준: [Figma Hybrid v1](https://www.figma.com/design/gGv1j4VDdu2EIBiwrAcH90?node-id=106-738)
 - `app/globals.css`: 시맨틱 색상, 타이포그래피, 여백, 반경과 공통 레이아웃. 화이트/웜 그레이 바탕에 버건디 액션과 딥 그린 강조를 사용합니다.
 - `app/layout.tsx`: IBM Plex Sans KR와 Instrument Serif, 전역 헤더·푸터, 본문 바로가기.
 - `components/ui`: Button, Input, Card, Notice. 로딩·오류·빈 상태와 키보드 포커스를 공통 처리합니다.
@@ -158,7 +158,7 @@ pnpm exec playwright show-report
 
 ## Hybrid v1 디자인 시스템 (2026-10-05 동기화)
 
-Figma 아키텍처·화면 바로가기 · 컨트롤 상태 명세 · 포스터 라이브러리
+[Figma 아키텍처·화면 바로가기](https://www.figma.com/design/gGv1j4VDdu2EIBiwrAcH90?node-id=124-2935) · [컨트롤 상태 명세](https://www.figma.com/design/gGv1j4VDdu2EIBiwrAcH90?node-id=121-806) · [포스터 라이브러리](https://www.figma.com/design/gGv1j4VDdu2EIBiwrAcH90?node-id=121-1017)
 
 의존 방향은 토큰 → 공통 컨트롤 → 도메인 패턴 → 화면입니다. `components/ui`는 API를 호출하지 않습니다. `components/auth`, `components/booking`, `components/header`가 반복되는 구조와 정보 표현을 담당하고, `app`에서 조회·변경 흐름을 조합합니다. 가격·좌석 상태는 서버 응답을 기준으로 합니다.
 
@@ -188,7 +188,7 @@ Figma 아키텍처·화면 바로가기 · 컨트롤 상태 명세 · 포스터 
 
 사용성 점검에서 대기열 입장 만료와 가격 조회 실패의 복구 동작을 `BookingAction`으로 통합했습니다. 입장 만료 시 하단 버튼은 **대기열 다시 입장**, 가격 조회 실패 시에는 **가격 다시 확인**으로 바뀝니다. 가격을 다시 불러와도 선택한 좌석은 유지됩니다. 좁은 화면·가로 화면에서 페이지 넘침, 좌석 터치 영역, 가로 스크롤과 Space 키 선택도 검증합니다.
 
-Figma 예매 UX 상태·검토 가이드에 두 복구 상태와 시연 링크를 반영했습니다. 이는 Chromium·WebKit 모바일 에뮬레이션과 모의 API 점검 결과이며, 실제 사용자 테스트나 실기기 Safari 검증을 대신하지 않습니다.
+[Figma 예매 UX 상태·검토 가이드](https://www.figma.com/design/gGv1j4VDdu2EIBiwrAcH90?node-id=129-1811)에 두 복구 상태와 시연 링크를 반영했습니다. 이는 Chromium·WebKit 모바일 에뮬레이션과 모의 API 점검 결과이며, 실제 사용자 테스트나 실기기 Safari 검증을 대신하지 않습니다.
 
 ### 실제 WebSocket 재연결 확인 (2026-10-05)
 
@@ -264,7 +264,7 @@ Figma 예매 UX 상태·검토 가이드에 두 복구 상태와 시연 링크�
 | “결제 버튼을 눌렀는데 결과가 늦습니다. 어떻게 하시겠어요?” | Figma 결제 확인 중·응답 유실 상태를 각각 제시 | 진행 중에는 대기, 응답 유실에는 이전 요청 확인. 새 결제라고 오해하지 않음 |
 | “가격을 불러오지 못했다는 안내가 나왔습니다. 예매를 이어 주세요.” | Figma 가격 조회 실패 상태 | 하단 복구 버튼 발견, 선택 유지 이해 |
 
-Figma 예외 상태는 검토 가이드의 진입 버튼으로 시작합니다. 결제 진행 중 화면은 3초 후 승인 화면으로 이동하는 시연이므로, 상태 이해 질문은 디자인 화면을 보여 주며 진행합니다. 프로토타입은 실제 좌석 토글·결제 처리를 검증하는 용도로 쓰지 않습니다.
+Figma 예외 상태는 [검토 가이드](https://www.figma.com/design/gGv1j4VDdu2EIBiwrAcH90?node-id=129-1811)의 진입 버튼으로 시작합니다. 결제 진행 중 화면은 3초 후 승인 화면으로 이동하는 시연이므로, 상태 이해 질문은 디자인 화면을 보여 주며 진행합니다. 프로토타입은 실제 좌석 토글·결제 처리를 검증하는 용도로 쓰지 않습니다.
 
 각 과제 뒤에 “어디서 가장 망설였나요?”, “어떤 일이 일어날 것으로 예상했나요?”를 묻습니다. 진행자가 도움을 준 시점과 내용을 기록합니다. 2분 이상 진행이 멈추면 이유를 듣고 도움을 제공하되, 도움 없이 성공한 것으로 기록하지 않습니다.
 
@@ -331,10 +331,10 @@ Mac에서 실행한 Chromium·WebKit의 모바일 에뮬레이션으로 위 LAN 
 
 ### Figma 최종 상태 동기화
 
-상태 검토 가이드에 다음 화면과 진입·복구 링크를 추가했습니다.
+[상태 검토 가이드](https://www.figma.com/design/gGv1j4VDdu2EIBiwrAcH90?node-id=129-1811)에 다음 화면과 진입·복구 링크를 추가했습니다.
 
-- 좌석 상태 재조회 실패: 마지막 배치·선택 유지, 최신 상태 확인 전 확보 중단.
-- 결제 결과 조회 연결 끊김: 실패 확정으로 취급하지 않고 GET 결과만 재조회.
-- 최초 대기 조회 제한: 카운트다운 뒤 자동 재개. Figma에서는 5초 시연이며 앱은 서버 Retry-After를 사용.
+- [좌석 상태 재조회 실패](https://www.figma.com/design/gGv1j4VDdu2EIBiwrAcH90?node-id=136-924): 마지막 배치·선택 유지, 최신 상태 확인 전 확보 중단.
+- [결제 결과 조회 연결 끊김](https://www.figma.com/design/gGv1j4VDdu2EIBiwrAcH90?node-id=136-1008): 실패 확정으로 취급하지 않고 GET 결과만 재조회.
+- [최초 대기 조회 제한](https://www.figma.com/design/gGv1j4VDdu2EIBiwrAcH90?node-id=137-981): 카운트다운 뒤 자동 재개. Figma에서는 5초 시연이며 앱은 서버 Retry-After를 사용.
 
 인증 복귀 경로, 재연결 즉시 재조회, 늦은 스냅샷과 실시간 이벤트의 우선순위, 계정 전환 정리 규칙도 가이드에 반영했습니다. 새 화면 3개는 기존 인스턴스와 텍스트·벡터로 구성했으며 전체 UI 이미지 없이 편집 가능합니다. Figma는 상태·구성 설명용이며 실기기의 브라우저 UI·키보드·네트워크 동작은 앱에서 검증합니다.

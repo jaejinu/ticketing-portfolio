@@ -1,0 +1,86 @@
+[
+  {
+    "plugin": "grafana-postgresql-datasource",
+    "arch": "arm64",
+    "version": "13.0.4",
+    "sha256": "7b3af34998cbb7ef7854991f7103d6c4004c42c9a8bd405f90833b11e652b083",
+    "url": "https://grafana.com/api/plugins/grafana-postgresql-datasource/versions/13.0.4/download?os=linux&arch=arm64"
+  },
+  {
+    "plugin": "grafana-postgresql-datasource",
+    "arch": "amd64",
+    "version": "13.0.4",
+    "sha256": "d34f44bd13213502de4394955fcc170d70fb822531c181bff0179f216c35a0e0",
+    "url": "https://grafana.com/api/plugins/grafana-postgresql-datasource/versions/13.0.4/download?os=linux&arch=amd64"
+  },
+  {
+    "plugin": "influxdb",
+    "arch": "arm64",
+    "version": "13.1.6",
+    "sha256": "50d049ea7069206e677e13c645a92e826e3deb6d618266c6f158e8f2163a65d1",
+    "url": "https://grafana.com/api/plugins/influxdb/versions/13.1.6/download?os=linux&arch=arm64"
+  },
+  {
+    "plugin": "influxdb",
+    "arch": "amd64",
+    "version": "13.1.6",
+    "sha256": "ebf559b2a3d2375efe7959568a132c16ebe1fe7c55bfaf2ce7643693d6b0bceb",
+    "url": "https://grafana.com/api/plugins/influxdb/versions/13.1.6/download?os=linux&arch=amd64"
+  },
+  {
+    "plugin": "jaeger",
+    "arch": "arm64",
+    "version": "13.0.4",
+    "sha256": "0d6476aee8ede54ed7a0ec533c8eaf97efb860a90c44ea4bda37b8385ef7f5c5",
+    "url": "https://grafana.com/api/plugins/jaeger/versions/13.0.4/download?os=linux&arch=arm64"
+  },
+  {
+    "plugin": "jaeger",
+    "arch": "amd64",
+    "version": "13.0.4",
+    "sha256": "2a2458a646e735715a47bddc02a0dbb86a0c88412bc7851f3fd7de212b0a7c14",
+    "url": "https://grafana.com/api/plugins/jaeger/versions/13.0.4/download?os=linux&arch=amd64"
+  },
+  {
+    "plugin": "prometheus",
+    "arch": "arm64",
+    "version": "13.2.2",
+    "sha256": "496335b7f1f2a9e8b3529bf380e8702703346680e125ecb3860bf80e5c8431a9",
+    "url": "https://grafana.com/api/plugins/prometheus/versions/13.2.2/download?os=linux&arch=arm64"
+  },
+  {
+    "plugin": "prometheus",
+    "arch": "amd64",
+    "version": "13.2.2",
+    "sha256": "1787f2dac81a213891486ea4e417adee36ef67f7a324bc8d8403735a96dfb49a",
+    "url": "https://grafana.com/api/plugins/prometheus/versions/13.2.2/download?os=linux&arch=amd64"
+  },
+  {
+    "plugin": "stackdriver",
+    "arch": "arm64",
+    "version": "12.6.2",
+    "sha256": "c1401ecc373a1c96be5e820361afb09d82914dfde4948c8d77bc55d55c147ef3",
+    "url": "https://grafana.com/api/plugins/stackdriver/versions/12.6.2/download?os=linux&arch=arm64"
+  },
+  {
+    "plugin": "stackdriver",
+    "arch": "amd64",
+    "version": "12.6.2",
+    "sha256": "4792fb5705567b03dc0089db1bd688fbc541f9b8bb47e40488b7b6a32a19bf5a",
+    "url": "https://grafana.com/api/plugins/stackdriver/versions/12.6.2/download?os=linux&arch=amd64"
+  },
+  {
+    "plugin": "tempo",
+    "arch": "arm64",
+    "version": "13.2.2",
+    "sha256": "e174e7f0bb1fff4a729cec74290aaf848628ac7ac2d27c2fa5693092def69ecb",
+    "url": "https://grafana.com/api/plugins/tempo/versions/13.2.2/download?os=linux&arch=arm64"
+  },
+  {
+    "plugin": "tempo",
+    "arch": "amd64",
+    "version": "13.2.2",
+    "sha256": "36d53fdc7d0900b38f89e3e6da0babb7da99a2351caad6d19b736edda6deee8c",
+    "url": "https://grafana.com/api/plugins/tempo/versions/13.2.2/download?os=linux&arch=amd64"
+  }
+]

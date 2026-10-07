@@ -8,6 +8,9 @@ import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import java.util.UUID;
 
 /**
@@ -20,6 +23,10 @@ import java.util.UUID;
  */
 @Repository
 public interface SeatHoldRepository extends JpaRepository<SeatHold, UUID> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select h from SeatHold h where h.id = :id")
+    Optional<SeatHold> findForUpdate(@Param("id") UUID id);
 
     /** 사용자의 점유 이력 (활성 + 종료 모두 포함). 최근순. */
     List<SeatHold> findByHolderIdOrderByCreatedAtDesc(UUID holderId);
@@ -50,6 +57,7 @@ public interface SeatHoldRepository extends JpaRepository<SeatHold, UUID> {
      *   Pageable 은 LIMIT 역할 — JpaRepository 의 PageRequest 로 batch_size 를 주입한다.
      * </p>
      */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             SELECT h
               FROM SeatHold h

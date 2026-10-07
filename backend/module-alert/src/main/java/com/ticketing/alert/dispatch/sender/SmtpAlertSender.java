@@ -12,10 +12,10 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Component;
 
 /**
- * SMTP 채널 sender — 로컬 MailHog (port 1025) 또는 운영 SMTP.
+ * SMTP 채널 sender — 로컬 Mailpit (port 1025) 또는 운영 SMTP.
  *
  * <p>
- *   {@code spring.mail.host} 는 application-local.yml 의 mailhog 기본값 사용.
+ *   {@code spring.mail.host} 는 application-local.yml 의 mailpit 기본값 사용.
  *   본 PR 단계엔 plain text 메일. HTML 템플릿은 Phase 8 (운영 콘솔과 함께).
  * </p>
  */

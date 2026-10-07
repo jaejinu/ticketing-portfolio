@@ -109,7 +109,7 @@ public class AlertEvaluator {
     @KafkaListener(
             topics = Topics.PRICING_TICK,
             // 별도 consumer-group — ws-bridge 와 독립 처리.
-            groupId = "alert-eval")
+            groupId = "${app.alert.evaluation-consumer-group:alert-eval}")
     public void onPricingTick(String rawPayload) {
         long startNanos = System.nanoTime();
         try {

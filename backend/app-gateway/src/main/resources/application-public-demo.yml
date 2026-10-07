@@ -1,0 +1,35 @@
+# Combine with local: SPRING_PROFILES_ACTIVE=local,public-demo.
+# Only the loopback cloudflared connector may reach this listener.
+server:
+  address: 127.0.0.1
+  forward-headers-strategy: native
+  tomcat:
+    remoteip:
+      remote-ip-header: CF-Connecting-IP
+      internal-proxies: '127\.0\.0\.1|0:0:0:0:0:0:0:1|::1'
+      protocol-header: X-Forwarded-Proto
+
+spring:
+  data:
+    redis:
+      database: ${PUBLIC_DEMO_REDIS_DATABASE:1}
+  kafka:
+    consumer:
+      group-id: ticketing-public-demo
+
+app:
+  auth:
+    cors:
+      allowed-origins: ${AUTH_CORS_ORIGINS}
+    jwt:
+      auto-generate-keys: false
+  show:
+    seed:
+      organizer-password-hash: ${PUBLIC_DEMO_PASSWORD_HASH}
+  pricing:
+    streams-application-id: ticketing-public-demo-pricing
+  alert:
+    evaluation-consumer-group: ticketing-public-demo-alert-eval
+    dispatch-consumer-group: ticketing-public-demo-alert-dispatch
+  ws-bridge:
+    consumer-group: ticketing-public-demo-ws

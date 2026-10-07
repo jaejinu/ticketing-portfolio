@@ -20,7 +20,8 @@ datasources:
       # Tempo의 trace_id 를 가진 로그에서 trace 보기로 점프.
       derivedFields:
         - datasourceUid: tempo
-          matcherRegex: "trace_id=(\\w+)"
+          matcherRegex: "trace_id"
+          matcherType: label
           name: TraceID
           url: "$${__value.raw}"
 
@@ -38,8 +39,11 @@ datasources:
         datasourceUid: loki
         spanStartTimeShift: -1h
         spanEndTimeShift: 1h
-        tags: [{ key: 'service.name', value: 'service' }]
-        filterByTraceID: true
+        tags: [{ key: 'service.name', value: 'service_name' }]
+        filterByTraceID: false
+        customQuery: true
+        # Native OTLP trace_id is structured metadata, not part of the log body.
+        query: '{service_name="$${__span.tags["service.name"]}"} | trace_id="$${__span.traceId}"'
         filterBySpanID: false
       # trace → metric 점프 (서비스 그래프 등).
       tracesToMetrics:

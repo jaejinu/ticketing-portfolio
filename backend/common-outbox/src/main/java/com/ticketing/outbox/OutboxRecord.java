@@ -23,8 +23,8 @@ import java.util.UUID;
  *   <li>payload 는 String(JSON) 으로 보관 — JSONB 컬럼이지만 Hibernate 기본은 String 매핑.
  *       JsonNode 매핑은 hibernate-types 가 필요한데 의존을 늘리지 않으려 String 으로 보관 후
  *       Publisher 가 ObjectMapper 로 다시 파싱.</li>
- *   <li>낙관적 락(@Version) 미사용 — Publisher 단일 인스턴스 가정. 다중 인스턴스 시
- *       SELECT FOR UPDATE SKIP LOCKED 로 동시성 제어 (Phase 6).</li>
+ *   <li>낙관적 락(@Version) 미사용 — 발행은 ShedLock 으로 한 인스턴스만 수행하므로
+ *       같은 레코드를 동시에 갱신하지 않는다 (ADR-0002).</li>
  *   <li>last_error 는 디버깅용 free-form 텍스트 — null 가능.</li>
  * </ul>
  */

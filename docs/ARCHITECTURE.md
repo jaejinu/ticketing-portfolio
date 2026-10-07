@@ -13,7 +13,7 @@
 
 ## 2. 기술 스택 — 무엇을, 왜
 
-### 백엔드 (Java 17 + Spring Boot 3.3, Gradle 멀티모듈)
+### 백엔드 (Java 17 + Spring Boot 3.5.16, Gradle 멀티모듈)
 
 | 기술 | 역할 | 왜 이걸 썼나 |
 | --- | --- | --- |
@@ -23,7 +23,7 @@
 | **Kafka Streams** | 수요 신호 집계 | 1초 텀블링 윈도우로 "지금 이 구역에 몇 명이 몰리나"를 계산 — 가격 산출의 입력 |
 | **TimescaleDB** | 가격 시계열 | 1초 틱을 hypertable 에 쌓고 Continuous Aggregate 로 1m/1h/1d 캔들 자동 롤업. 일반 PG 문법 그대로 |
 | **Transactional Outbox** | 이벤트 발행 정합성 | "DB 커밋됐는데 Kafka 발행 실패" 이중쓰기 문제 제거. 폴링 방식 채택 ([ADR-0002](adr/0002-outbox-polling-vs-debezium.md)) |
-| **Saga (오케스트레이션)** | 결제 일관성 | 2PC 불가(PG가 XA 미지원) → 보상 트랜잭션. 결제 실패 시 좌석 자동 복원 ([ADR-0001](adr/0001-saga-vs-2pc.md)) |
+| **Saga (오케스트레이션)** | 결제 일관성 | Mock PG 호출 전후로 DB 트랜잭션 분리. 실패 시 점유 유지, 사용자 해제 또는 TTL 만료로 좌석 복원 ([ADR-0001](adr/0001-saga-vs-2pc.md)) |
 | **Bucket4j + Redisson** | 레이트리밋/채널 quota | 토큰 버킷을 Redis 에 두어 다중 인스턴스에서도 한도 공유 |
 | **ShedLock** | 스케줄러 단일 실행 | 인스턴스가 늘어도 가격 틱·대기열 admit 이 "전역 1회/주기" 유지 (동시 가동 2배 실증 후 도입) |
 | **JWT RS256 + refresh rotation** | 인증 | mock 아닌 실제 보안: access 15분 + refresh 14일 회전, 재사용 감지 시 전 세션 폐기(+10초 레이스 유예) |
@@ -42,12 +42,12 @@
 
 | 구성 | 내용 |
 | --- | --- |
-| `infra/docker-compose.yml` | Timescale(5440)·Redis(6390)·Kafka(9092/9096)·MailHog·fcm-mock·mock-pg |
+| `infra/docker-compose.yml` | Timescale(5440)·Redis(6390)·Kafka(9092/9096)·Mailpit·fcm-mock·mock-pg |
 | `infra/docker-compose.lgtm.yml` | Loki·Grafana(3031)·Tempo·Mimir·OTel Collector |
 | `infra/k3d/` | k3s 클러스터 + Helm 차트 — 같은 이미지를 k8s 로도 배포 (`make k3d-up`) |
 | `loadtest/` | Gatling(부하: SeatHold/FullPeak) + Locust(봇: 정상/매크로 혼합) |
 
-> **Kafka 리스너가 3개인 이유** (`docker-compose.yml` 의 KAFKA_CFG_ADVERTISED_LISTENERS):
+> **Kafka 리스너가 3개인 이유** (`docker-compose.yml` 의 KAFKA_ADVERTISED_LISTENERS):
 > Kafka 클라이언트는 접속 후 브로커가 "광고하는 주소"로 재접속한다. 컨테이너 안(kafka:9092)/
 > 호스트(localhost:9092→9094)/k3d pod(host.k3d.internal:9096)가 각자 다른 주소로 도달해야
 > 해서 리스너를 분리했다 — 하나라도 틀리면 해당 위치의 클라이언트가 전멸한다 (실제로 겪음).
@@ -73,9 +73,10 @@ app-gateway ──── 부팅 진입점. 전 모듈을 조립하고 REST/WS �
 └─ common-outbox ───── OutboxPublisher(폴링+적체 드레인), OutboxRecord
 ```
 
-의존 방향은 **위에서 아래로만** (도메인 모듈 → common). 도메인 모듈끼리는 직접 호출 대신
-Kafka 이벤트로 통신하는 게 원칙 — 예외적으로 queue/pricing 이 show 의 리포지토리를 읽는다
-(ON_SALE 회차 목록 — 이벤트로 풀기엔 과한 단순 조회).
+공통 모듈 외에 도메인 모듈 사이에도 직접 의존이 있다. 예를 들어 payment-saga는
+seat 서비스를 호출해 판매를 확정하고, seat는 show의 좌석·구역을 조회한다. pricing은
+seat의 `CurrentPriceProvider`를 구현한다. Kafka는 수요 집계·알람·실시간 전파에 사용한다.
+전체 직접 의존 목록은 [백엔드 가이드](../backend/README.md#모듈-의존성-규칙)를 참고한다.
 
 ## 4. 핵심 흐름 — "예매 한 건"이 지나가는 길
 
@@ -98,7 +99,7 @@ Kafka 이벤트로 통신하는 게 원칙 — 예외적으로 queue/pricing 이
    │
    ▼ ③ 결제        POST /api/v1/payments  (Idempotency-Key: 클라이언트가 생성·재사용하는 UUID)
    │   PaymentSagaService — TX1: PENDING 생성 → [TX 밖] MockPgClient.charge()
-   │   → TX2: APPROVED(좌석 SOLD) or FAILED(보상: 좌석 복원) + outbox 기록
+   │   → TX2: APPROVED(좌석 SOLD) or FAILED(점유 유지, 해제 또는 TTL 만료 시 복원) + outbox 기록
    │
    ▼ ④ 이벤트 전파  OutboxPublisher(1초 폴링) → Kafka
    │   ├→ ws-bridge: SeatEventConsumer → STOMP /topic/…/seats → 다른 브라우저 좌석맵 갱신
@@ -115,6 +116,17 @@ Kafka 이벤트로 통신하는 게 원칙 — 예외적으로 queue/pricing 이
 `app/shows/[showId]/[scheduleId]/queue/page.tsx`(①) → `seats/page.tsx` + `components/seat-map/`(②)
 → `app/checkout/[bookingId]/page.tsx`(③) → `lib/stomp/client.ts` + `components/price-chart/`(④⑤)
 
+### 결제 복구의 현재 범위
+
+- 재요청은 PENDING을 포함해 기존 결과를 반환하며 PG를 재호출하지 않는다.
+- 사용자별 PostgreSQL 트랜잭션 잠금과 점유 행 잠금으로 같은 키·다른 키의 동시 결제를 직렬화한다.
+- PG 결과 불명은 PENDING 유지. 5초 간격 스캔이 만료된 처리권을 획득해 PG 결과를 조회한다.
+- 처리 토큰이 바뀌면 이전 작업자는 결과를 덮어쓸 수 없다. HTTP 호출은 DB 트랜잭션 밖에서 실행한다.
+- 승인 확인 시 점유가 유효하면 판매 확정한다. 점유가 끝났거나 PG에 주문이 없으면 취소 의도를
+  DB에 기록하고 PG 취소 확인 후 FAILED로 확정한다. 취소 실패는 PENDING으로 남겨 다시 시도한다.
+- 사용자 해제·TTL 만료·판매 확정은 같은 점유 행의 쓰기 잠금을 사용한다.
+- Mock PG 상태는 Compose 볼륨에 보존한다. 실제 PG 연동과 사용자 환불은 범위 밖이다.
+
 ## 5. 코드 읽는 순서 (추천 루트)
 
 **루트 A — 동시성이 궁금하다 (30분)**
@@ -124,7 +136,7 @@ Kafka 이벤트로 통신하는 게 원칙 — 예외적으로 queue/pricing 이
 4. `loadtest/gatling/…/SeatHoldSimulation.scala` — 이걸 어떻게 증명했나 (409 = 정상)
 
 **루트 B — 돈 흐름이 궁금하다 (30분)**
-1. `module-payment-saga/…/PaymentSagaService.java` — TX1/[PG]/TX2 분리 구조와 보상
+1. `module-payment-saga/…/PaymentSagaService.java` — TX1/[PG]/TX2 분리 구조와 실패 정책
 2. `common-outbox/…/OutboxPublisher.java` — 폴링 + 적체 드레인
 3. `docs/adr/0001`, `0002` — 왜 Saga, 왜 폴링인가
 

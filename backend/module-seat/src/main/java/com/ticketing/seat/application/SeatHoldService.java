@@ -296,7 +296,7 @@ public class SeatHoldService {
      */
     @Transactional
     public SeatHold release(UUID holdId, UUID requesterId) {
-        SeatHold hold = seatHoldRepository.findById(holdId)
+        SeatHold hold = seatHoldRepository.findForUpdate(holdId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.SEAT_NOT_FOUND,
                         "점유 정보를 찾을 수 없습니다. holdId=" + holdId));
 
@@ -361,7 +361,7 @@ public class SeatHoldService {
      */
     @Transactional
     public SeatHold markSold(UUID holdId, UUID requesterId) {
-        SeatHold hold = seatHoldRepository.findById(holdId)
+        SeatHold hold = seatHoldRepository.findForUpdate(holdId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.SEAT_NOT_FOUND,
                         "점유 정보를 찾을 수 없습니다. holdId=" + holdId));
         if (!hold.getHolderId().equals(requesterId)) {
@@ -408,9 +408,8 @@ public class SeatHoldService {
      *
      * <h2>주의</h2>
      * <p>
-     *   동일 시점 다중 인스턴스가 본 메서드를 동시에 실행할 가능성은 Phase 2 단계에선 없음
-     *   (단일 부트런 가정). 다중 인스턴스가 되면 SELECT ... FOR UPDATE SKIP LOCKED 또는
-     *   Redisson 분산 리더 선출이 필요.
+     *   다중 인스턴스에서는 호출자인 {@code SeatHoldExpiryScheduler} 의 ShedLock
+     *   ({@code seat-hold-expiry}) 이 한 인스턴스만 실행되게 보장한다.
      * </p>
      *
      * @param batchSize 1회 처리 상한

@@ -19,7 +19,7 @@
 
 ### 1) FCM/SMTP 는 mock 컨테이너를 최종 형태로 유지한다
 
-- FCM → `infra/mock-services/fcm-mock` (HTTP 수신 후 200), SMTP → MailHog (UI 로 수신 확인).
+- FCM → `infra/mock-services/fcm-mock` (HTTP 수신 후 200), SMTP → Mailpit (UI 로 수신 확인).
 - 백엔드 코드는 `app.alert.fcm.mock-url` 등 **URL 설정만 바꾸면 실서비스로 전환 가능한
   구조** 를 유지한다 — 어댑터 계층은 실계약과 동일한 HTTP/SMTP 프로토콜을 쓴다.
 - 채널 쿼터·재시도·계측 KPI 는 mock 앞단에서 전부 증명한다.
@@ -60,7 +60,7 @@
 
 ## Trade-off
 
-- (−) "실제 푸시가 폰에 도착하는" 데모는 불가 — 대신 MailHog/fcm-mock UI·로그로 시연.
+- (−) "실제 푸시가 폰에 도착하는" 데모는 불가 — 대신 Mailpit/fcm-mock UI·로그로 시연.
 - (−) k8s 운영 경험 증명은 매니페스트/스크립트 수준에 머문다.
 - (+) 시크릿 없는 재현 가능한 데모 (`make up` 한 방), 부하 테스트 시 외부 서비스 리스크 0.
 - (+) 어댑터 구조 덕에 실전환 비용은 "설정 교체 + 키 발급" 수준으로 유지.

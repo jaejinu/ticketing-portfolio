@@ -36,7 +36,7 @@ spring:
       port: ${REDIS_PORT:6390}
 
   # JavaMailSender 자동 등록 — SmtpAlertSender (module-alert) 가 의존.
-  # docker-compose 의 MailHog (port 1025) 가 SMTP 수신 + http://localhost:8025 UI 노출.
+  # docker-compose 의 Mailpit (port 1025) 가 SMTP 수신 + http://localhost:8025 UI 노출.
   mail:
     host: ${SMTP_HOST:localhost}
     port: ${SMTP_PORT:1025}
@@ -95,8 +95,8 @@ app:
 
   smtp:
     host: ${SMTP_HOST:localhost}
-    port: ${SMTP_PORT:1025}             # mailhog 기본
-    mode: ${SMTP_MODE:mailhog}          # mailhog | real
+    port: ${SMTP_PORT:1025}             # mailpit 기본
+    mode: ${SMTP_MODE:mailpit}          # mailpit | real
 
   # ---------------------------------------------------------------------------
   # Phase 7b: 알람 채널별 실제 발송
@@ -104,7 +104,7 @@ app:
   # 왜 이 값들인지:
   #   - fcm.mock-url: mock-fcm 컨테이너 (infra/mock-services/mock-fcm).
   #   - fcm.quota-per-min 600: 실제 FCM Free tier 와 비슷한 분당 제한 (1만/일 가까이).
-  #   - smtp.from: 발신자 주소 (MailHog 가 그대로 표시).
+  #   - smtp.from: 발신자 주소 (Mailpit 가 그대로 표시).
   #   - smtp.quota-per-min 120: SMTP relay 가 보호되어야 하므로 작게.
   #   - webhook.quota-per-min 300: 사용자별 webhook 합산 한도.
   alert:
@@ -121,12 +121,13 @@ app:
 
   payment:
     mock-pg-base-url: ${MOCK_PG_BASE_URL:http://localhost:8087}
-    # Phase 3b: 결제 saga 정책
-    #   - mock-pg-timeout 3초: 사용자 결제 진행 페이지의 답답함 한계점.
-    #   - fail-on-pg-error true: PG 호출 IOException/timeout 시 즉시 FAILED 마킹.
-    #     운영 단계에서 reconciler 도입 후 false 로 전환 가능.
-    mock-pg-timeout:  ${PAYMENT_PG_TIMEOUT:PT3S}
-    fail-on-pg-error: ${PAYMENT_FAIL_ON_PG_ERROR:true}
+    # 연결/응답 읽기 각각의 제한. 결과 불명은 PENDING 유지 후 PG 조회로 복구한다.
+    mock-pg-timeout: ${PAYMENT_PG_TIMEOUT:PT3S}
+    processing-lease: ${PAYMENT_PROCESSING_LEASE:PT30S}
+    reconcile-retry: ${PAYMENT_RECONCILE_RETRY:PT10S}
+    reconcile-scan-interval: ${PAYMENT_RECONCILE_SCAN_INTERVAL:PT5S}
+    reconcile-batch-size: ${PAYMENT_RECONCILE_BATCH_SIZE:20}
+    reconcile-enabled: ${PAYMENT_RECONCILE_ENABLED:true}
 
   # ---------------------------------------------------------------------------
   # module-seat (좌석 분산락) 정책

@@ -7,7 +7,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force \
     && rm -rf /usr/local/lib/node_modules/npm /opt/yarn-* \
     && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/yarn /usr/local/bin/yarnpkg
-COPY server.js ./
+COPY server.js store.js ./
+RUN mkdir -p /app/data && chown node:node /app/data
 USER node
 ENV PORT=8087
 EXPOSE 8087

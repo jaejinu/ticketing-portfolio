@@ -1,0 +1,199 @@
+{
+  "recordedAt": "2026-10-05T16:29:37.162274+00:00",
+  "scanner": "Trivy 0.75.0",
+  "scope": "Exact locally rebuilt Redis, Kafka and Grafana images; OS and bundled packages, no exclusions",
+  "platform": "linux/arm64",
+  "images": [
+    {
+      "service": "redis",
+      "image": "ticketing-redis:7.4.11-hardened-3d7dc194c0fa",
+      "imageId": "sha256:3d7dc194c0fa30ad4553bfb0888c6e45a2c969296d676a079b04fd8970bb6b96",
+      "scannedAt": "2026-10-05T16:09:09.187187295Z",
+      "os": {
+        "Family": "alpine",
+        "Name": "3.21.8"
+      },
+      "counts": {},
+      "findings": []
+    },
+    {
+      "service": "kafka",
+      "image": "ticketing-kafka:4.3.1-hardened-dfe7868a4ef2",
+      "imageId": "sha256:dfe7868a4ef2dda79170588926f0ac17794448cd396514e2d9c32171763f71fa",
+      "scannedAt": "2026-10-05T16:12:50.818763384Z",
+      "os": {
+        "Family": "alpine",
+        "Name": "3.23.4"
+      },
+      "counts": {
+        "MEDIUM": 2
+      },
+      "findings": [
+        {
+          "target": "Java",
+          "id": "CVE-2026-59949",
+          "package": "at.yawk.lz4:lz4-java",
+          "installed": "1.10.2",
+          "fixed": "1.11.1",
+          "severity": "MEDIUM"
+        },
+        {
+          "target": "Java",
+          "id": "CVE-2026-49844",
+          "package": "org.apache.logging.log4j:log4j-api",
+          "installed": "2.25.4",
+          "fixed": "2.25.5, 2.26.1",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    {
+      "service": "grafana",
+      "image": "ticketing-grafana:13.2.3-hardened-b50d3f770281",
+      "imageId": "sha256:b50d3f770281745bddcc58e494093deb364b28b4223fd543b46cccbb74d95424",
+      "scannedAt": "2026-10-05T16:16:18.408732382Z",
+      "os": {
+        "Family": "alpine",
+        "Name": "3.24.2"
+      },
+      "counts": {
+        "LOW": 3,
+        "UNKNOWN": 5,
+        "MEDIUM": 3,
+        "HIGH": 4
+      },
+      "findings": [
+        {
+          "target": "usr/share/grafana/bin/grafana",
+          "id": "CVE-2026-81870",
+          "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace",
+          "installed": "v1.44.0",
+          "fixed": "1.45.0",
+          "severity": "LOW"
+        },
+        {
+          "target": "usr/share/grafana/bin/grafana",
+          "id": "CVE-2026-81870",
+          "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+          "installed": "v1.44.0",
+          "fixed": "1.45.0",
+          "severity": "LOW"
+        },
+        {
+          "target": "usr/share/grafana/bin/grafana",
+          "id": "CVE-2026-81870",
+          "package": "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp",
+          "installed": "v1.44.0",
+          "fixed": "1.45.0",
+          "severity": "LOW"
+        },
+        {
+          "target": "usr/share/grafana/bin/grafana",
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "installed": "v0.56.0",
+          "fixed": "",
+          "severity": "UNKNOWN"
+        },
+        {
+          "target": "usr/share/grafana/data/plugins-bundled/elasticsearch/gpx_grafana_elasticsearch_datasource_linux_arm64",
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "installed": "v0.56.0",
+          "fixed": "",
+          "severity": "UNKNOWN"
+        },
+        {
+          "target": "usr/share/grafana/data/plugins-bundled/loki/gpx_grafana-loki-datasource_linux_arm64",
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "installed": "v0.56.0",
+          "fixed": "",
+          "severity": "UNKNOWN"
+        },
+        {
+          "target": "usr/share/grafana/data/plugins-bundled/mssql/gpx_grafana-mssql-datasource_linux_arm64",
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "installed": "v0.56.0",
+          "fixed": "",
+          "severity": "UNKNOWN"
+        },
+        {
+          "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_arm64",
+          "id": "CVE-2026-56855",
+          "package": "golang.org/x/crypto",
+          "installed": "v0.55.0",
+          "fixed": "0.56.0",
+          "severity": "MEDIUM"
+        },
+        {
+          "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_arm64",
+          "id": "CVE-2026-78662",
+          "package": "golang.org/x/crypto",
+          "installed": "v0.55.0",
+          "fixed": "0.56.0",
+          "severity": "MEDIUM"
+        },
+        {
+          "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_arm64",
+          "id": "GO-2026-5932",
+          "package": "golang.org/x/crypto",
+          "installed": "v0.55.0",
+          "fixed": "",
+          "severity": "UNKNOWN"
+        },
+        {
+          "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_arm64",
+          "id": "CVE-2026-84304",
+          "package": "google.golang.org/grpc",
+          "installed": "v1.83.0",
+          "fixed": "1.83.1",
+          "severity": "HIGH"
+        },
+        {
+          "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_arm64",
+          "id": "CVE-2026-84445",
+          "package": "google.golang.org/grpc",
+          "installed": "v1.83.0",
+          "fixed": "1.82.2, 1.83.2, 1.84.0-dev.0.20260825144003-d5a41119e0e3, 1.85.0-dev.0.20260825072537-93e31b48545e",
+          "severity": "HIGH"
+        },
+        {
+          "target": "usr/share/grafana/data/plugins-bundled/stackdriver/gpx_grafana_cloudmonitoring_datasource_linux_arm64",
+          "id": "CVE-2026-84303",
+          "package": "google.golang.org/grpc",
+          "installed": "v1.83.0",
+          "fixed": "1.83.1",
+          "severity": "MEDIUM"
+        },
+        {
+          "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_arm64",
+          "id": "CVE-2026-21728",
+          "package": "github.com/grafana/tempo",
+          "installed": "v1.5.1-0.20260910130453-bcfe9f230c1d",
+          "fixed": "2.8.4, 2.9.2, 2.10.2",
+          "severity": "HIGH"
+        },
+        {
+          "target": "usr/share/grafana/data/plugins-bundled/tempo/gpx_grafana-tempo-datasource_linux_arm64",
+          "id": "CVE-2026-28377",
+          "package": "github.com/grafana/tempo",
+          "installed": "v1.5.1-0.20260910130453-bcfe9f230c1d",
+          "fixed": "2.10.3",
+          "severity": "HIGH"
+        }
+      ]
+    }
+  ],
+  "validation": {
+    "offlineVolumeCopiesCompared": 3,
+    "redisAbsoluteExpirationPreserved": true,
+    "kafkaOffsetsAndGroupCommitsPreserved": true,
+    "redisAndKafkaRestartPersistence": true,
+    "kafkaConnectRestAndFileRoundTrip": true,
+    "grafanaOfficialSignaturesValid": 6,
+    "grafanaDashboardPanels": 11,
+    "grafanaPromqlQueries": 26
+  }
+}

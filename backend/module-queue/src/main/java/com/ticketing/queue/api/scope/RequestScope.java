@@ -8,9 +8,9 @@ import org.springframework.stereotype.Component;
 /**
  * Shared identity for pre-security queue defenses. Only a signature/issuer/expiry
  * verified JWT establishes a user scope. Token rotation retains the same user ID.
- * Anonymous or invalid credentials use the direct peer address; forwarding
- * headers are deliberately ignored. A deployment behind a proxy needs a separate
- * trusted-proxy boundary before enabling forwarded address handling.
+ * Anonymous or invalid credentials use the servlet remote address. This resolver
+ * never parses forwarding headers. The public-demo profile uses Tomcat RemoteIpValve
+ * to accept CF-Connecting-IP only from the loopback tunnel connector.
  */
 @Component
 public final class RequestScope {

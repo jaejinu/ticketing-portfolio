@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 /**
  * module-payment-saga 자동 설정.
@@ -22,6 +23,19 @@ import org.springframework.transaction.support.TransactionTemplate;
 @EnableJpaRepositories(basePackages = "com.ticketing.paymentsaga.domain")
 @EnableConfigurationProperties(PaymentProperties.class)
 public class PaymentModuleConfig {
+
+    /** 느린 PG 조회가 좌석 만료·가격 틱의 공용 스케줄러를 점유하지 않도록 격리한다. */
+    @Bean
+    public ThreadPoolTaskExecutor paymentRecoveryExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(1);
+        executor.setQueueCapacity(1);
+        executor.setThreadNamePrefix("payment-recovery-");
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(10);
+        return executor;
+    }
 
     @Bean
     public TransactionTemplate paymentTransactionTemplate(PlatformTransactionManager txManager) {

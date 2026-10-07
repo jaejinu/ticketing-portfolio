@@ -1,0 +1,24 @@
+{
+  "scannedAt": "2026-10-05T09:33:39.863844297Z",
+  "scanner": "Trivy 0.75.0",
+  "service": "mailpit",
+  "image": "axllent/mailpit:v1.31.4@sha256:b68349e3a014b90c5610bfb26b2ae36f3892d7b8cf25ee140c6c71c98d2fcf48",
+  "imageId": "sha256:b68349e3a014b90c5610bfb26b2ae36f3892d7b8cf25ee140c6c71c98d2fcf48",
+  "os": {
+    "Family": "alpine",
+    "Name": "3.24.2"
+  },
+  "scope": "Mailpit image only; OS and bundled language vulnerabilities. Other images not rescanned.",
+  "counts": {
+    "UNKNOWN": 1
+  },
+  "findings": [
+    {
+      "id": "GO-2026-5932",
+      "package": "golang.org/x/crypto",
+      "installed": "v0.57.0",
+      "fixed": "",
+      "severity": "UNKNOWN"
+    }
+  ]
+}

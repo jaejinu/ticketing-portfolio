@@ -1,56 +1,85 @@
 # ADR-0001 — 결제 흐름에 Saga 패턴 채택 (2PC 미채택)
 
 - 상태: Accepted
-- 일자: 2026-05-12
+- 최초 결정: 2026-05-12
+- 구현 갱신: 2026-10-06
 - 관련 R/F: R-NQPLRH (티켓 구매 플로우), F-IIVAAE (Saga 결제 오케스트레이션)
 
----
+## 결정과 트랜잭션 경계
 
-## Context — 왜 이 결정이 필요한가
+좌석 점유, 외부 PG 결제, DB 판매 확정을 하나의 분산 트랜잭션으로 묶지 않는다.
+`PaymentSagaService`가 호출 전후의 DB 트랜잭션을 분리하고 Outbox로 결과를 전파한다.
+외부 HTTP 호출 중에는 DB 트랜잭션과 행 잠금을 유지하지 않는다.
 
-티켓 구매 한 건은 다음 4단계가 **모두 성공해야** 의미가 있다.
+1. **TX1:** 사용자별 PostgreSQL advisory transaction lock → 점유 행 잠금 → 금액·점유 검증 →
+   PENDING 결제, 멱등 키, 처리 토큰과 처리 기한 저장.
+2. **PG 호출:** 최초 생성자만 `/pay`를 호출한다. 같은 키는 기존 결과를 반환한다.
+   다른 키라도 같은 점유의 PENDING/APPROVED 결제가 있으면 그 결제에 연결한다.
+3. **TX2:** 결제 행 잠금과 처리 토큰 확인 → 점유 행 잠금 → 판매 확정과 승인 이벤트 기록.
+   사용자 해제·점유 만료도 같은 점유 행 잠금을 사용한다.
+4. **자동 복구:** 기한이 지난 PENDING을 조회하고 결제 행 잠금으로 새 처리 토큰을 발급한다.
+   작업권을 잃은 이전 작업자는 DB 결과를 덮어쓰지 못한다.
+   HTTP 조회는 전용 단일 작업 스레드에서 실행하고 중복 스캔을 쌓지 않아 공용 스케줄러를 막지 않는다.
 
-1. 좌석 임시 점유 (Redis 분산락 + DB seat 상태 변경)
-2. 결제 (외부 PG — 우리 통제 밖)
-3. 발권 (DB ticket 생성)
-4. 알림 발송 (Kafka → FCM/SMTP)
+## 결과별 정책
 
-도중 어디서 실패하든 **앞 단계는 보상**되어야 한다. 예: 결제는 됐는데 발권이 실패하면 PG cancel + 좌석 복구. 결제 실패면 좌석만 해제.
+| 상황 | 동작 |
+| --- | --- |
+| 같은 사용자·키, 다른 본문 | 충돌 오류 |
+| 같은 키 재요청 | 상태와 무관하게 기존 결과 반환, PG 재호출 없음 |
+| 다른 키, 같은 점유의 PENDING/APPROVED 존재 | 기존 결제에 새 키 연결 |
+| PG 거절 확인 | FAILED, 점유는 사용자 해제 또는 TTL 만료까지 유지 |
+| 타임아웃·응답 유실·잘못된 응답 | PENDING 유지, PG 조회 예약 |
+| PG 승인 확인 + 유효한 점유 | 좌석 SOLD + 결제 APPROVED + Outbox를 한 TX로 커밋 |
+| PG 승인 확인 + 종료된 점유 | 취소 의도를 먼저 커밋 → PG 취소 확인 → FAILED |
+| PG PENDING + 유효한 점유 | 재조회 예약 |
+| PG PENDING + 종료된 점유 | PG 취소 확인 후 FAILED |
+| PG NOT_FOUND | 재청구하지 않고 PG 취소 tombstone 생성 확인 후 FAILED |
+| PG 조회·취소 장애 | PENDING 유지, 처리 기한 이후 재시도 |
+| PG 승인 후 DB 커밋 실패 | TX1의 PENDING은 남으므로 처리 기한 후 조회하여 재확정 또는 취소 |
 
-이 분산 흐름의 일관성 모델로 두 후보가 있다.
+NOT_FOUND만으로 실패 처리하면 늦게 도착한 최초 요청이 승인될 수 있다.
+Mock PG 취소는 미접수 주문에도 영속 tombstone을 남겨 이후 청구를 차단한다.
+취소 의도를 저장한 결제는 이후 작업자도 취소만 수행하며 승인으로 돌아가지 않는다.
+FAILED 확정 후 유효한 점유에는 새 키로 새로운 결제를 만들 수 있다.
 
-| 후보 | 장점 | 단점 |
-|---|---|---|
-| **2PC (XA 분산 트랜잭션)** | 강한 일관성 (ACID 전체 노드 보장) | (a) PG·Kafka·Redis가 XA 미지원 (PG는 사실상 거의 모든 곳에서 지원 안 함). (b) Prepare 단계에서 자원이 잠겨 동시성 KPI(10만 동접) 깨짐. (c) 코디네이터 SPOF + 복구 복잡. |
-| **Saga (보상 트랜잭션 + 이벤트)** | (a) 각 단계가 로컬 트랜잭션이라 락 시간 최소. (b) 외부 PG와 자연스럽게 통합. (c) Kafka 이벤트로 추적·재처리 가능. | (a) Eventual consistency — 중간 상태가 짧게 노출됨. (b) 보상 로직 복잡도 증가. (c) Idempotency 키 관리 의무. |
+## Mock PG 계약과 저장
 
-KPI 측면에서 2PC는 좌석 페이지 p95 < 500ms / 결제 p95 < 3s 를 만족시키기 어렵다. PG의 XA 미지원도 결정적이다.
+- `POST /pay`: `orderId`, 양의 정수 `amount`. 같은 주문은 같은 결정을 반환하고 금액 변경은 409.
+- `GET /payments/{orderId}`: PENDING / APPROVED / DECLINED / CANCELLED, 없으면 404.
+- `POST /payments/{orderId}/cancel`: 미접수·진행·승인 주문의 취소를 멱등 처리한다.
+- 결정을 응답 전에 파일에 저장한다. Compose의 `mock-pg-data` 볼륨으로 재시작 후에도 보존한다.
+- 정상 95%, 거절 4%, 지연 승인 1%를 시뮬레이션한다. 지연 승인도 접수 시 먼저 저장한다.
+- 파일 저장소는 단일 프로세스 로컬 시연용이다. 여러 Mock PG 프로세스가 같은 파일을 공유하지 않는다.
+  볼륨 삭제 시 멱등 이력도 사라지므로 DB와 함께 보존해야 한다.
 
-## Decision — 무엇을 선택했나
+## 설정과 적용 순서
 
-**Saga 패턴 + Orchestration 스타일** 채택.
+`application-local.yml`의 기본값:
 
-- 단일 오케스트레이터(`BookingSagaOrchestrator`)가 상태 머신을 관리.
-  - Choreography(순수 이벤트 연쇄) 대비 흐름 가시성·디버깅이 압도적으로 좋음.
-  - 한 클래스에서 "성공·실패·보상"이 한눈에 보여 신입 학습자에게 유리.
-- 보상 트랜잭션은 명시적 메서드(`compensateSeatHold`, `compensatePayment`)로 작성.
-- 멱등성은 두 축으로 방어:
-  - **외부 진입**: 클라이언트 `Idempotency-Key` 헤더 + `payments` 테이블 unique 제약.
-  - **내부 컨슈머**: 이벤트 envelope의 `eventId` + Redis Set `processed_events:{group}:{eventId}` (24h TTL) + DB `processed_events` (영구).
-- Saga 상태는 `bookings.status` 컬럼 (`PENDING_PAYMENT → PAID → ISSUED` 정상, `FAILED → REFUNDED` 보상).
+| 설정 | 기본값 | 의미 |
+| --- | --- | --- |
+| `mock-pg-timeout` | 3초 | 연결과 응답 읽기에 각각 적용. 전체 작업 시간 제한 아님 |
+| `processing-lease` | 30초 | 처리권 유효 기한. 프로세스 종료 시 이 시간이 지나면 복구 가능 |
+| `reconcile-retry` | 10초 | 조회·취소 실패 또는 미확정 결과 재시도 간격 |
+| `reconcile-scan-interval` | 5초 | 복구 대상 스캔 간격 |
+| `reconcile-batch-size` | 20 | 스캔당 조회할 최대 결제 수 |
+| `reconcile-enabled` | true | 자동 복구 활성화 |
 
-## Consequences — 무엇이 따라오는가
+이전 `fail-on-pg-error` / `PAYMENT_FAIL_ON_PG_ERROR`는 제거했다. 결과 불명은 항상 PENDING이다.
+V011은 처리 토큰·다음 조회 시각·취소 의도와 PENDING 조회 인덱스를 추가한다. 기존 이력은 삭제하지 않는다.
+새 Mock PG를 먼저 빌드·기동하고, 기존 백엔드를 종료한 뒤 새 백엔드에서 마이그레이션한다.
+구버전 백엔드와 혼합 실행하지 않는다. 기존 중복 결제 이력은 별도로 확인해야 한다.
 
-### 좋은 점
-- PG/FCM/SMTP 같은 외부 시스템과 자연스럽게 통합.
-- 좌석 락 보유 시간이 짧음 → 동시성 KPI 달성 가능.
-- 부분 실패 시나리오를 Kafka 이벤트로 명시적으로 추적 (Tempo trace에서 한 줄로 보임).
+## 검증과 남은 범위
 
-### 감수해야 할 비용
-- **중간 상태 노출**: "결제 완료 후 발권 전" 짧은 구간 존재. UI는 `WAITING_TICKET` 상태로 명시.
-- **보상 누락 위험**: 보상 메서드 실패 시 좌석이 영구 점유 가능 → Phase 9 모니터링에 `seat.lock.compensation.failed` 카운터 + 알람.
-- **테스트 매트릭스 폭증**: S1~S5 5개 보상 시나리오를 통합 테스트로 모두 커버.
-- **운영 가시성 의존**: Saga 실패율이 메트릭/트레이스 없으면 침묵.
+- 도메인 상태 전이 테스트와 실제 로컬 HTTP 서버 기반 클라이언트 테스트.
+- PostgreSQL Testcontainers로 동시 키 요청, 복구 작업 경합, 타임아웃 뒤 승인,
+  만료·해제 후 취소, 취소 재시도, 미접수 주문, 오래된 작업자의 결과 무시,
+  PG 승인 후 DB 확정 롤백을 검증한다. PG 응답은 이 통합 테스트에서 제어 가능한 대역을 사용한다.
+- Mock PG는 HTTP 동시 요청·멱등성·조회·취소·파일 저장소 재로딩을 Node 테스트로 검증한다.
+- 실제 PG 인증·서명·거래 조회·취소 계약과 사용자 요청 환불은 구현하지 않았다.
+- 장시간 PG 장애 시 PENDING은 안전하게 유지되지만 해결 시점을 보장하지 않는다. 운영 알림·수동 대응은 별도 과제다.
+- WebSocket 이벤트 중복 억제는 메모리 TTL 캐시다. 영구 exactly-once 처리를 의미하지 않는다.
 
-### 미래 옵션
-- Eventuate Tram, Axon Framework 같은 Saga 프레임워크 도입은 학습 가치 대비 무거워서 현재 범위 밖. 자체 구현으로 패턴 학습 후 평가.
+초기 구상의 `BookingSagaOrchestrator`, `bookings.status`, 별도 발권 테이블은 현재 구현이 아니다.

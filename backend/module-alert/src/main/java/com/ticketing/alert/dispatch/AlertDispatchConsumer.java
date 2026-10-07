@@ -40,7 +40,7 @@ public class AlertDispatchConsumer {
                 .register(meterRegistry);
     }
 
-    @KafkaListener(topics = Topics.ALERT_SENT, groupId = "alert-dispatch")
+    @KafkaListener(topics = Topics.ALERT_SENT, groupId = "${app.alert.dispatch-consumer-group:alert-dispatch}")
     public void onAlertSent(String raw) {
         Envelope envelope;
         try {

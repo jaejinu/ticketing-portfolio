@@ -1,0 +1,35 @@
+{
+  "scannedAt": "2026-10-05T15:39:03.741821042Z",
+  "recordedAt": "2026-10-05T15:46:33.894802+00:00",
+  "scanner": "Trivy 0.75.0",
+  "scope": "Locally rebuilt PostgreSQL image, OS and bundled language packages, no exclusions",
+  "image": "ticketing-postgres:2.30.2-pg16-hardened-853e44f90fd8",
+  "imageId": "sha256:853e44f90fd83e85018f378b8d52f6b68841dc80204430326081054d1f261ba6",
+  "platform": "linux/arm64",
+  "os": {
+    "Family": "alpine",
+    "Name": "3.23.6"
+  },
+  "counts": {
+    "UNKNOWN": 1
+  },
+  "findings": [
+    {
+      "target": "usr/local/bin/timescaledb-tune",
+      "id": "CVE-2026-39824",
+      "package": "golang.org/x/sys",
+      "installed": "v0.25.0",
+      "fixed": "0.44.0",
+      "severity": "UNKNOWN"
+    }
+  ],
+  "validation": {
+    "freshDatabase": true,
+    "gosuUserSwitch": true,
+    "parallelCsvCopy": true,
+    "hypertableAndOhlc": true,
+    "tuneDryRun": true,
+    "restartPersistence": true,
+    "existingTableFingerprintsMatched": 16
+  }
+}

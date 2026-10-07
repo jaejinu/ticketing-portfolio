@@ -49,7 +49,7 @@ public abstract class PricingIntegrationTestBase {
     @SuppressWarnings("resource")
     protected static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>(
-                    DockerImageName.parse("timescale/timescaledb:2.16.1-pg16")
+                    DockerImageName.parse("timescale/timescaledb:2.30.2-pg16@sha256:6f139d56042989bd35f50ba5986e492cd32e35cc6778c50be2659add298dc09f")
                             .asCompatibleSubstituteFor("postgres"))
                     .withDatabaseName("ticketing_pricing_it")
                     .withUsername("ticket")
@@ -64,7 +64,7 @@ public abstract class PricingIntegrationTestBase {
     @SuppressWarnings("resource")
     protected static final org.testcontainers.containers.GenericContainer<?> REDIS =
             new org.testcontainers.containers.GenericContainer<>(
-                    DockerImageName.parse("redis:7-alpine"))
+                    DockerImageName.parse("redis:7.4.11-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499"))
                     .withExposedPorts(6379)
                     .withReuse(true);
 
