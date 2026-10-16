@@ -120,6 +120,7 @@ class SmokeIT {
     void refundBackfillCanReadTheIntegratedPaymentSchema() {
         var queue = context.getBean(com.ticketing.alert.refund.RefundNotificationQueue.class);
         assertThat(queue.backfill()).isGreaterThanOrEqualTo(0);
+        assertThat(queue.enqueueConfirmed(java.util.UUID.randomUUID())).isZero();
     }
 
     @Test

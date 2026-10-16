@@ -19,7 +19,17 @@ public class RefundNotificationQueue {
     @Transactional
     public void onRefund(String raw) {
         var payload = json.readValue(raw, Envelope.class).payload();
-        enqueue(UUID.fromString(payload.get("paymentId").asText()), UUID.fromString(payload.get("holderId").asText()), payload.get("amount").asLong());
+        enqueueConfirmed(UUID.fromString(payload.get("paymentId").asText()));
+    }
+    /** Shared brokers can contain events from another database. The local payment is authoritative. */
+    public int enqueueConfirmed(UUID paymentId) {
+        return jdbc.update("""
+            INSERT INTO refund_notifications(payment_id,channel,user_id,amount)
+            SELECT p.id,c.channel,p.holder_id,p.amount FROM payments p
+            CROSS JOIN (VALUES ('SMTP'),('FCM')) AS c(channel)
+            WHERE p.id=? AND p.status='REFUNDED'
+            ON CONFLICT (payment_id,channel) DO NOTHING
+            """, paymentId);
     }
     @Transactional
     public void enqueue(UUID paymentId, UUID userId, long amount) {

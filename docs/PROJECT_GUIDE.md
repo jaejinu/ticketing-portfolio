@@ -495,7 +495,7 @@ ESLint 전이 의존성이다. production 의존성 audit는 통과했지만 개
 
 ### 17.2 환불 완료 알림
 
-`PAYMENT_REFUNDED`를 별도 consumer group `refund-notifications`가 소비한다. `refund_notifications`의 `(payment_id, channel)` 기본 키가 중복 이벤트를 흡수한다. SMTP와 FCM 두 행이 독립적으로 처리된다. worker는 확정 환불 중 누락된 행도 DB에서 보충하므로 Kafka 누락·보관 기간 경과 뒤에도 복구할 수 있다.
+`PAYMENT_REFUNDED`를 별도 consumer group `refund-notifications`가 소비한다. `refund_notifications`의 `(payment_id, channel)` 기본 키가 중복 이벤트를 흡수한다. 이 서버 DB에 실제로 존재하는 REFUNDED 결제만 등록하며 사용자와 금액은 로컬 DB에서 읽는다. 공유 Kafka의 다른 DB 이벤트는 무시한다. SMTP와 FCM 두 행이 독립적으로 처리된다. worker는 확정 환불 중 누락된 행도 DB에서 보충하므로 Kafka 누락·보관 기간 경과 뒤에도 복구할 수 있다.
 
 상태는 `PENDING → SENDING → SENT`, 실패 시 재시도 후 최대 10회에서 `FAILED`다. `FOR UPDATE SKIP LOCKED`로 한 행씩 claim하고 2분 lease와 고유 token으로 이전 실행자의 결과 덮어쓰기를 막는다. 지수형 대기(최초 실패 후 60초, 최대 1,920초), 채널 quota, SMTP 연결/읽기/쓰기 각 5초, HTTP 연결 3초·읽기 5초 제한을 적용한다. 외부 발송은 DB 트랜잭션 밖에서 한다.
 
