@@ -67,3 +67,14 @@ Redisson의 비어 있는 비밀번호 인증이 실패해 임시 Redis에도 �
 | macOS 방화벽 | 비활성화, 비대화식 sudo는 암호 필요로 실패. 시스템 설정에서 관리자 조치 필요 |
 
 이 항목들은 완료로 표시하지 않는다. 실제 PG는 사용자 요청에 따라 계속 제외한다.
+
+
+## 저장소·배포 확인
+
+- 코드 커밋: 비공개 `6b6f13d`, 공개 미러 `aa1a64b`. 두 Git 소스 트리가 동일함을 확인했다.
+- Vercel production에 `6b6f13d` 프론트를 배포했다. 백엔드 코드는 변경하지 않았다.
+- 배포 후 공개 `/api/health`: `{"status":"ok"}`.
+- [공개 미러 Frontend CI](https://github.com/jaejinu/ticketing-portfolio/actions/runs/38842295240): 성공, 브라우저 153개 통과 (4.2분).
+- [외부 데모 감시](https://github.com/jaejinu/ticketing-portfolio/actions/runs/38842419407): 성공.
+- [비공개 Frontend CI](https://github.com/jaejinu/ticketing/actions/runs/38842279947): 전체 성공.
+- 비공개·공개 미러 Secret scan 모두 성공.
