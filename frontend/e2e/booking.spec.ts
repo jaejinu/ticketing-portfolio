@@ -1198,3 +1198,22 @@ for (const path of ["/me/tickets", "/me/tickets/payment-1"]) {
     await expect(page.getByText("환불 완료", { exact: true }).first()).toBeVisible({ timeout: 3000 });
   });
 }
+
+
+test("buyer confirms a full refund and sees the refreshed ticket", async ({ page }) => {
+  await mockApi(page);
+  let refunded = false;
+  let calls = 0;
+  await page.route("**/api/v1/payments", route => route.fulfill({ json: { payments: [{ ...hold, ...payment, status: refunded ? 'REFUNDED' : 'APPROVED' }] } }));
+  await page.route("**/api/v1/payments/payment-1/refund-quote", route => route.fulfill({ json: { eligible: !refunded, amount: 180000, deadline: '2026-12-19T10:00:00Z', policy: '공연 시작 전 전액 환불' } }));
+  await page.route("**/api/v1/payments/payment-1/refund", route => {
+    calls++; refunded = true;
+    return route.fulfill({ json: { ...payment, status: 'REFUNDED' } });
+  });
+  await page.goto('/me/tickets/payment-1');
+  await page.getByRole('button', { name: '예매 취소·전액 환불' }).click();
+  expect(calls).toBe(0);
+  await page.getByRole('button', { name: '확인', exact: true }).click();
+  await expect(page.getByText('환불 완료', { exact: true }).first()).toBeVisible();
+  expect(calls).toBe(1);
+});

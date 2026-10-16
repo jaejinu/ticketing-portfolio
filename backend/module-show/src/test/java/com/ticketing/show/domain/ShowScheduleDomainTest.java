@@ -120,4 +120,15 @@ class ShowScheduleDomainTest {
                 now.plusDays(7).plusHours(2),
                 now.plusDays(3));
     }
+    @Test
+    void discountRequiresExplicitOptInBeforeSales() {
+        var s = freshSchedule();
+        assertThat(s.getDiscountPercent()).isZero();
+        assertThatThrownBy(() -> s.configureDiscount(31)).isInstanceOf(BusinessException.class);
+        s.configureDiscount(30);
+        assertThat(s.getDiscountPercent()).isEqualTo(30);
+        s.markOnSale();
+        assertThatThrownBy(() -> s.configureDiscount(0)).isInstanceOf(BusinessException.class);
+    }
+
 }

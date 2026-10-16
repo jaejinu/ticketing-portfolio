@@ -29,7 +29,7 @@ import static org.mockito.Mockito.mock;
         "com.ticketing.auth.domain", "com.ticketing.outbox"})
 @EnableConfigurationProperties({PaymentProperties.class, SeatHoldProperties.class})
 @Import({PaymentSagaService.class, SeatHoldService.class, SeatHoldViewService.class, OutboxWriter.class,
-        PaymentRefundService.class, com.ticketing.auth.audit.AuditRecorder.class,
+        PaymentRefundService.class, PaymentReportService.class, com.ticketing.auth.audit.AuditRecorder.class,
         com.ticketing.auth.security.ClientIpResolver.class, com.ticketing.common.web.ApiErrorAdvice.class})
 public class PaymentIntegrationTestApp {
     @Bean Clock clock() { return Clock.systemUTC(); }

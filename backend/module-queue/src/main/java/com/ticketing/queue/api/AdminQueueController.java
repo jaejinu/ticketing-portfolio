@@ -95,6 +95,36 @@ public class AdminQueueController {
         return ResponseEntity.ok(adminService.trafficStats());
     }
 
+    public record RuleRequest(@jakarta.validation.constraints.NotBlank String scope,
+                              @jakarta.validation.constraints.NotBlank String key,
+                              boolean allow,
+                              @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(86400) int seconds,
+                              @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max=200) String reason) {}
+
+    @org.springframework.web.bind.annotation.PostMapping("/rules")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setRule(@AuthenticatedUser AuthPrincipal me,
+            @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody RuleRequest req) {
+        adminService.setRule(req.scope(), req.key(), req.allow(), req.seconds());
+        audit.record(me.userId(), req.allow() ? "QUEUE_ALLOWED" : "QUEUE_BLOCKED", "MACRO_RULE",
+                req.scope() + ":" + req.key(), java.util.Map.of("seconds", req.seconds(), "reason", req.reason()));
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/allows")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<MacroBlockListResponse> allows() {
+        return ResponseEntity.ok(new MacroBlockListResponse(adminService.listAllows()));
+    }
+
+    @DeleteMapping("/allows/{scope}/{key}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> removeAllow(@AuthenticatedUser AuthPrincipal me, @PathVariable String scope, @PathVariable String key) {
+        adminService.removeAllow(scope, key);
+        audit.record(me.userId(), "QUEUE_ALLOW_REMOVED", "MACRO_RULE", scope + ":" + key, java.util.Map.of());
+        return ResponseEntity.noContent().build();
+    }
+
     // -------------------------------------------------------------------------
     // 응답 래퍼 — 리스트를 바로 최상위 배열로 내보내지 않고 필드로 감싼다
     // (향후 페이징/메타 필드 추가 여지 + frontend zod 스키마 안정성).

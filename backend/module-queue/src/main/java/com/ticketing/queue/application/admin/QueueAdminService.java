@@ -164,6 +164,47 @@ public class QueueAdminService {
         return out;
     }
 
+    public void setRule(String scope, String key, boolean allow, int seconds) {
+        validateTarget(scope, key);
+        if (seconds < 1 || seconds > 86400) throw new com.ticketing.common.error.BusinessException(
+                com.ticketing.common.error.ErrorCode.INVALID_REQUEST, "유효 시간은 1~86400초입니다.");
+        String suffix = scope + ":" + key;
+        String selected = allow ? MacroDetectionService.ALLOW_PREFIX : MacroDetectionService.BLOCK_PREFIX;
+        String opposite = allow ? MacroDetectionService.BLOCK_PREFIX : MacroDetectionService.ALLOW_PREFIX;
+        redisson.getBucket(opposite + suffix).delete();
+        redisson.getBucket(MacroDetectionService.WINDOW_PREFIX + suffix).delete();
+        redisson.getBucket(selected + suffix).set("manual", java.time.Duration.ofSeconds(seconds));
+    }
+
+    public void removeAllow(String scope, String key) {
+        validateTarget(scope, key);
+        redisson.getBucket(MacroDetectionService.ALLOW_PREFIX + scope + ":" + key).delete();
+    }
+
+    public List<MacroBlock> listAllows() {
+        List<MacroBlock> result = new ArrayList<>();
+        for (String full : redisson.getKeys().getKeysByPattern(MacroDetectionService.ALLOW_PREFIX + "*")) {
+            String[] target = full.substring(MacroDetectionService.ALLOW_PREFIX.length()).split(":", 2);
+            long ttl = redisson.getBucket(full).remainTimeToLive();
+            if (target.length == 2 && ttl > 0) result.add(new MacroBlock(target[0], target[1], (ttl + 999) / 1000));
+        }
+        return result;
+    }
+
+    private static void validateTarget(String scope, String key) {
+        boolean valid = false;
+        try {
+            if ("user".equals(scope)) valid = UUID.fromString(key).toString().equalsIgnoreCase(key);
+            if ("ip".equals(scope) && key.length() <= 45 && key.matches("[0-9a-fA-F:.]+")) {
+                // Only literal characters are accepted, so no hostname/DNS lookup is possible.
+                valid = key.contains(":") || key.split("\\.").length == 4;
+                if (valid) java.net.InetAddress.getByName(key);
+            }
+        } catch (Exception ignored) { valid = false; }
+        if (!valid) throw new com.ticketing.common.error.BusinessException(
+                com.ticketing.common.error.ErrorCode.INVALID_REQUEST, "유효한 IP 주소 또는 사용자 UUID를 입력하세요.");
+    }
+
     // -------------------------------------------------------------------------
     // 트래픽 스냅샷
     // -------------------------------------------------------------------------

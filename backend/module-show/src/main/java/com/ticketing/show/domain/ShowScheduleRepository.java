@@ -14,6 +14,10 @@ import java.util.UUID;
 @Repository
 public interface ShowScheduleRepository extends JpaRepository<ShowSchedule, UUID> {
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select s from ShowSchedule s where s.id = :id")
+    java.util.Optional<ShowSchedule> findForUpdate(@org.springframework.data.repository.query.Param("id") UUID id);
+
     List<ShowSchedule> findByShowIdOrderByStartsAtAsc(UUID showId);
 
     /** module-pricing 입력: 활성 회차만 가격 산출 대상 (ON_SALE). */

@@ -88,6 +88,20 @@ public class OrganizerShowController {
         return ResponseEntity.ok(Map.of("status", show.getStatus().name()));
     }
 
+    @PostMapping("/{showId}/unpublish")
+    public ResponseEntity<Map<String, String>> unpublish(@AuthenticatedUser AuthPrincipal me, @PathVariable UUID showId) {
+        Show show = commandService.unpublish(me.userId(), showId);
+        audit.record(me.userId(), "SHOW_UNPUBLISHED", "SHOW", showId, Map.of());
+        return ResponseEntity.ok(Map.of("status", show.getStatus().name()));
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping("/{showId}")
+    public ResponseEntity<Void> deleteDraft(@AuthenticatedUser AuthPrincipal me, @PathVariable UUID showId) {
+        commandService.deleteDraft(me.userId(), showId);
+        audit.record(me.userId(), "SHOW_DELETED", "SHOW", showId, Map.of());
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping
     public ResponseEntity<Map<String, Object>> myShows(@AuthenticatedUser AuthPrincipal me) {
         List<ShowResponse> body = queryService.listByOrganizer(me.userId()).stream()

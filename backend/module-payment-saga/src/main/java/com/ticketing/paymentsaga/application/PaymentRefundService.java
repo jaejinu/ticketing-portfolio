@@ -59,14 +59,42 @@ public class PaymentRefundService {
     private java.time.OffsetDateTime now() { return java.time.OffsetDateTime.now(clock); }
     private record Work(Payment payment, UUID token) {}
 
+    public record RefundQuote(boolean eligible, long amount, java.time.OffsetDateTime deadline, String policy) {}
+
+    public RefundQuote quote(UUID userId, UUID paymentId) {
+        Payment p = payments.findById(paymentId).orElseThrow(() -> new BusinessException(ErrorCode.SEAT_NOT_FOUND, "결제를 찾을 수 없습니다."));
+        requireOwner(p, userId);
+        ShowSchedule schedule = schedules.findById(p.getScheduleId()).orElseThrow();
+        return new RefundQuote(PaymentStatus.APPROVED.equals(p.getStatus()) && !p.isRefundPending()
+                && now().isBefore(schedule.getStartsAt()), p.getAmount(), schedule.getStartsAt(),
+                "공연 시작 전 결제 건 전체를 수수료 없이 전액 환불합니다. 부분 취소는 지원하지 않습니다. (Mock PG 데모)");
+    }
+
+    private void requireOwner(Payment payment, UUID userId) {
+        if (!payment.getHolderId().equals(userId)) throw new BusinessException(ErrorCode.FORBIDDEN, "본인 결제만 취소할 수 있습니다.");
+    }
+
+    public Payment refundMine(UUID userId, UUID paymentId) {
+        return request(userId, paymentId, "구매자 직접 취소", true);
+    }
+
     public Payment refund(UUID actorId, UUID paymentId, String reason) {
+        return request(actorId, paymentId, reason, false);
+    }
+
+    private Payment request(UUID actorId, UUID paymentId, String reason, boolean ownerRequest) {
         String why = reason == null || reason.isBlank() ? "admin" : reason;
         Work work = tx.execute(status -> {
             Payment p = payments.findForUpdate(paymentId)
                     .orElseThrow(() -> new BusinessException(ErrorCode.SEAT_NOT_FOUND, "결제를 찾을 수 없습니다."));
+            if (ownerRequest) requireOwner(p, actorId);
             if (PaymentStatus.REFUNDED.equals(p.getStatus())) return new Work(p, null);
             if (!PaymentStatus.APPROVED.equals(p.getStatus())) {
                 throw new BusinessException(ErrorCode.PAYMENT_ALREADY_SETTLED, "승인된 결제만 환불할 수 있습니다.");
+            }
+            if (ownerRequest && !p.isRefundPending()) {
+                ShowSchedule schedule = schedules.findById(p.getScheduleId()).orElseThrow();
+                if (!now().isBefore(schedule.getStartsAt())) throw new BusinessException(ErrorCode.INVALID_SHOW_STATE, "공연 시작 이후에는 직접 취소할 수 없습니다. 운영자에게 문의해 주세요.");
             }
             if (p.isRefundPending() && p.getReconcileAt().isAfter(now())) return new Work(p, null);
             p.requestRefund(actorId, why);

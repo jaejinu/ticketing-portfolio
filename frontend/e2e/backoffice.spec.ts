@@ -44,7 +44,7 @@ test("organizer creates a show and is taken to its management page", async ({ pa
 
   await expect(page).toHaveURL(/\/organizer\/shows\/show-new$/);
   expect(created).toEqual([{ title: "새 콘서트", venue: "작은 홀", description: null }]);
-  await expect(page.getByText("준비 중")).toBeVisible();
+  await expect(page.getByText("준비 중", { exact: true })).toBeVisible();
   // 좌석이 없으면 공개할 수 없다.
   await expect(page.getByRole("button", { name: "공연 공개" })).toBeDisabled();
 
@@ -292,4 +292,64 @@ test("payment refresh failure blocks refund until the latest state is available"
   await page.getByRole("button", { name: "결제 다시 조회" }).click();
   await expect(page.getByRole("button", { name: "확인", exact: true })).toBeEnabled();
   await expect(page.getByText("최신 결제 상태를 확인하지 못했어요.")).toHaveCount(0);
+});
+
+test('organizer explicitly configures a discount floor before opening', async ({ page }) => {
+  await signedIn(page, ['USER', 'ORGANIZER']);
+  const calls: unknown[] = [];
+  let percent = 0;
+  const schedule = () => ({ id: 'schedule-new', showId: 'show-new', startsAt: '2028-12-01T10:00:00Z', salesStartAt: '2028-11-01T10:00:00Z', status: 'SCHEDULED', seatTotal: 2, discountPercent: percent });
+  await page.route('**/api/v1/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/discount')) { const body = route.request().postDataJSON(); calls.push(body); percent = body.percent; return route.fulfill({ json: schedule() }); }
+    if (path.endsWith('/organizer/shows')) return route.fulfill({ json: { shows: [{ id: 'show-new', title: '할인 공연', venue: '홀', status: 'DRAFT', schedules: [schedule()] }] } });
+    if (path.endsWith('/sections')) return route.fulfill({ json: { sections: [] } });
+    return route.fulfill({ json: {} });
+  });
+  await page.goto('/organizer/shows/show-new');
+  await expect(page.getByLabel('최대 할인율(%)')).toHaveValue('0');
+  await page.getByLabel('최대 할인율(%)').fill('20');
+  await expect(page.getByText(/설정 하한: 기준가의 80%/)).toBeVisible();
+  await expect(page.getByRole('button', { name: '할인 설정 저장' })).toBeDisabled();
+  await page.getByLabel('할인 설정 사유').fill('사전 할인');
+  await page.getByRole('button', { name: '할인 설정 저장' }).click();
+  await expect.poll(() => calls.length).toBe(1);
+  expect(calls[0]).toEqual({ percent: 20, reason: '사전 할인' });
+});
+
+test('sales report keeps whole-result totals while moving pages', async ({ page }) => {
+  await signedIn(page, ['USER', 'ADMIN']);
+  await page.route('**/api/v1/**', route => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith('/payment-report')) return route.fulfill({ json: { payments: [{ paymentId: `payment-${url.searchParams.get('page')}`, holdId: 'hold', holderId: 'buyer', amount: 10000, status: 'APPROVED' }], totalElements: 30, totalPages: 2, page: Number(url.searchParams.get('page')), totals: [{ status: 'APPROVED', refundPending: false, count: 30, amount: 300000 }] } });
+    if (url.pathname.endsWith('/schedules')) return route.fulfill({ json: { schedules: [] } });
+    return route.fulfill({ json: {} });
+  });
+  await page.goto('/admin');
+  await page.getByRole('tab', { name: '판매 리포트' }).click();
+  await expect(page.getByText('검색 결과 30건')).toBeVisible();
+  await expect(page.getByText(/30건 · 300,000/)).toBeVisible();
+  await page.getByRole('button', { name: '다음 페이지' }).click();
+  await expect(page.getByText(/결제 payment-1/)).toBeVisible();
+  await expect(page.getByText(/30건 · 300,000/)).toBeVisible();
+});
+
+test('manual macro rule requires a reason and confirmation', async ({ page }) => {
+  await signedIn(page, ['USER', 'ADMIN']);
+  const rules: unknown[] = [];
+  await page.route('**/api/v1/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/rules')) { rules.push(route.request().postDataJSON()); return route.fulfill({ status: 204 }); }
+    if (path.endsWith('/allows') || path.endsWith('/blocks')) return route.fulfill({ json: { blocks: [] } });
+    return route.fulfill({ json: {} });
+  });
+  await page.goto('/admin');
+  await page.getByLabel('차단·허용 대상').fill('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+  await expect(page.getByRole('button', { name: '규칙 적용' })).toBeDisabled();
+  await page.getByLabel('규칙 적용 사유').fill('테스트 차단');
+  await page.getByRole('button', { name: '규칙 적용' }).click();
+  expect(rules).toHaveLength(0);
+  await page.getByRole('button', { name: '확인', exact: true }).click();
+  await expect.poll(() => rules.length).toBe(1);
+  expect(rules[0]).toEqual({ scope: 'user', key: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', allow: false, seconds: 600, reason: '테스트 차단' });
 });

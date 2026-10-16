@@ -15,7 +15,7 @@ import java.util.UUID;
  * </p>
  */
 @Repository
-public interface UserRepository extends JpaRepository<User, UUID> {
+public interface UserRepository extends JpaRepository<User, UUID>, org.springframework.data.jpa.repository.JpaSpecificationExecutor<User> {
 
     Optional<User> findByEmail(String email);
 

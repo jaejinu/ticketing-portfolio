@@ -14,7 +14,7 @@ import org.springframework.data.domain.Pageable;
 import java.util.UUID;
 
 @Repository
-public interface PaymentRepository extends JpaRepository<Payment, UUID> {
+public interface PaymentRepository extends JpaRepository<Payment, UUID>, org.springframework.data.jpa.repository.JpaSpecificationExecutor<Payment> {
 
     List<Payment> findByHolderIdOrderByCreatedAtDesc(UUID holderId);
 

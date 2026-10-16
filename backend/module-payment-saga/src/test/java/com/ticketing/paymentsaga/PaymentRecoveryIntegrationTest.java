@@ -462,4 +462,54 @@ class PaymentRecoveryIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM idempotency_keys WHERE payment_id = ?", Long.class, pending.getId()))
                 .isEqualTo(1);
     }
+    @org.springframework.beans.factory.annotation.Autowired PaymentReportService reports;
+
+    @Test
+    void ownerRefundIsFullIdempotentAndPrivate() {
+        Payment approved = pay("owner-refund");
+        assertThat(refunds.quote(holder, approved.getId()).eligible()).isTrue();
+        assertThat(refunds.quote(holder, approved.getId()).amount()).isEqualTo(100000);
+        assertThatThrownBy(() -> refunds.refundMine(UUID.randomUUID(), approved.getId()))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.code())
+                        .isEqualTo(com.ticketing.common.error.ErrorCode.FORBIDDEN));
+        assertThat(refunds.refundMine(holder, approved.getId()).getStatus()).isEqualTo("REFUNDED");
+        assertThat(refunds.refundMine(holder, approved.getId()).getStatus()).isEqualTo("REFUNDED");
+        assertThatThrownBy(() -> refunds.quote(UUID.randomUUID(), approved.getId())).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> refunds.refundMine(UUID.randomUUID(), approved.getId())).isInstanceOf(BusinessException.class);
+        assertThat(events("PAYMENT_REFUNDED")).isEqualTo(1);
+        verify(pg, times(1)).cancel(approved.getId());
+    }
+
+    @Test
+    void ownerCannotRefundAfterPerformanceStarts() {
+        Payment approved = pay("too-late");
+        jdbc.update("UPDATE show_schedules SET starts_at=now()-interval '1 second' WHERE id=?", hold.getScheduleId());
+        assertThat(refunds.quote(holder, approved.getId()).eligible()).isFalse();
+        assertThatThrownBy(() -> refunds.refundMine(holder, approved.getId()))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> assertThat(ex.code())
+                        .isEqualTo(com.ticketing.common.error.ErrorCode.INVALID_SHOW_STATE));
+        verify(pg, never()).cancel(any());
+    }
+
+    @Test
+    void reportTotalsCoverAllPagesAndRespectBuyerFilter() {
+        pay("report");
+        for (int i = 0; i < 3; i++) jdbc.update(
+                "INSERT INTO payments (id, hold_id, holder_id, schedule_id, amount, status) VALUES (?, ?, ?, ?, 20000, 'FAILED')",
+                UUID.randomUUID(), hold.getId(), holder, hold.getScheduleId());
+        var first = reports.search(hold.getScheduleId(), holder, 0, 2);
+        var second = reports.search(hold.getScheduleId(), holder, 1, 2);
+        assertThat(first.totalElements()).isEqualTo(4);
+        assertThat(first.totalPages()).isEqualTo(2);
+        assertThat(first.payments()).hasSize(2);
+        assertThat(second.payments()).hasSize(2).doesNotContainAnyElementsOf(first.payments());
+        assertThat(first.totals()).isEqualTo(second.totals());
+        assertThat(first.totals()).anySatisfy(b -> {
+            assertThat(b.status()).isEqualTo("FAILED");
+            assertThat(b.count()).isEqualTo(3);
+            assertThat(b.amount()).isEqualTo(60000);
+        });
+        assertThat(reports.search(null, UUID.randomUUID(), 0, 2).totalElements()).isZero();
+    }
+
 }

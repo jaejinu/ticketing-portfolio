@@ -29,6 +29,7 @@ import java.util.UUID;
 @Service
 @Transactional
 public class SectionCommandService {
+    @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager entityManager;
 
     private final ShowRepository showRepository;
     private final ShowScheduleRepository scheduleRepository;
@@ -57,10 +58,8 @@ public class SectionCommandService {
         Section section = sectionRepository.findById(sectionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.SHOW_NOT_FOUND,
                         "구역을 찾을 수 없습니다. sectionId=" + sectionId));
-        ShowSchedule schedule = scheduleRepository.findById(section.getShowScheduleId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND,
-                        "회차를 찾을 수 없습니다. scheduleId=" + section.getShowScheduleId()));
-        loadOwnedSchedule(organizerId, schedule.getId());
+        ShowSchedule schedule = loadOwnedSchedule(organizerId, section.getShowScheduleId());
+        entityManager.refresh(section);
 
         OffsetDateTime now = OffsetDateTime.now(clock.withZone(ZoneId.of("UTC")));
         section.changeBasePrice(newPrice, schedule, now);
@@ -89,7 +88,8 @@ public class SectionCommandService {
     }
 
     private ShowSchedule loadOwnedSchedule(UUID organizerId, UUID scheduleId) {
-        ShowSchedule schedule = scheduleRepository.findById(scheduleId)
+        ShowSchedule schedule = (org.springframework.transaction.support.TransactionSynchronizationManager.isCurrentTransactionReadOnly()
+                ? scheduleRepository.findById(scheduleId) : scheduleRepository.findForUpdate(scheduleId))
                 .orElseThrow(() -> new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND,
                         "회차를 찾을 수 없습니다. scheduleId=" + scheduleId));
         Show show = showRepository.findById(schedule.getShowId())

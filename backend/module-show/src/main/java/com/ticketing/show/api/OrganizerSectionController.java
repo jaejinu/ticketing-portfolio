@@ -67,7 +67,7 @@ public class OrganizerSectionController {
                                                         @PathVariable UUID sectionId,
                                                         @Valid @RequestBody UpdateSectionPriceRequest req) {
         Section section = sectionCommandService.changeBasePrice(me.userId(), sectionId, req.basePrice());
-        audit.record(me.userId(), "SECTION_PRICE_CHANGED", "SECTION", sectionId, Map.of("basePrice", section.getBasePrice()));
+        audit.record(me.userId(), "SECTION_PRICE_CHANGED", "SECTION", sectionId, Map.of("basePrice", section.getBasePrice(), "reason", req.reason() == null || req.reason().isBlank() ? "주최자 기준가 변경" : req.reason().trim()));
         return ResponseEntity.ok(SectionResponse.of(section));
     }
 }

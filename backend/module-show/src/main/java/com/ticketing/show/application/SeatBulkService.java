@@ -36,6 +36,9 @@ import java.util.UUID;
 @Transactional
 public class SeatBulkService {
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
     private static final int MAX_SEATS_PER_REQUEST = 5_000;
     /** seats.row_label 컬럼 길이 (V003__shows.sql: VARCHAR(5)). */
     private static final int MAX_ROW_LABEL_LENGTH = 5;
@@ -84,9 +87,10 @@ public class SeatBulkService {
         Section section = sectionRepository.findById(sectionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.SHOW_NOT_FOUND,
                         "구역을 찾을 수 없습니다. sectionId=" + sectionId));
-        ShowSchedule schedule = scheduleRepository.findById(section.getShowScheduleId())
+        ShowSchedule schedule = scheduleRepository.findForUpdate(section.getShowScheduleId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND,
                         "회차를 찾을 수 없습니다."));
+        entityManager.refresh(section);
         SectionCommandService.requireSeatMapEditable(schedule);
         Show show = showRepository.findById(schedule.getShowId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.SHOW_NOT_FOUND,
@@ -117,4 +121,25 @@ public class SeatBulkService {
 
         return total;
     }
+    /** Remove an entire row before opening; references and sales history are never deleted. */
+    public int deleteRow(UUID organizerId, UUID sectionId, String row) {
+        if (row == null || row.isBlank() || row.length() > MAX_ROW_LABEL_LENGTH)
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "행 이름은 1~5자여야 합니다.");
+        Section section = sectionRepository.findById(sectionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SHOW_NOT_FOUND, "구역을 찾을 수 없습니다."));
+        ShowSchedule schedule = scheduleRepository.findForUpdate(section.getShowScheduleId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND, "회차를 찾을 수 없습니다."));
+        Show show = showRepository.findById(schedule.getShowId()).orElseThrow();
+        if (!show.getOrganizerId().equals(organizerId)) throw new BusinessException(ErrorCode.SHOW_ACCESS_DENIED, "본인 소유 공연이 아닙니다.");
+        entityManager.refresh(section);
+        SectionCommandService.requireSeatMapEditable(schedule);
+        var selected = seatRepository.findBySectionId(sectionId).stream().filter(s -> row.equals(s.getRowLabel())).toList();
+        if (selected.stream().anyMatch(s -> !"AVAILABLE".equals(s.getStatus())))
+            throw new BusinessException(ErrorCode.INVALID_SHOW_STATE, "점유·판매된 좌석은 삭제할 수 없습니다.");
+        seatRepository.deleteAll(selected);
+        section.addSeatCount(-selected.size());
+        schedule.addSeatCount(-selected.size());
+        return selected.size();
+    }
+
 }

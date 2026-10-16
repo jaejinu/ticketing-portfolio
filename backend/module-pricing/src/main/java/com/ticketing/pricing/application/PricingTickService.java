@@ -120,7 +120,7 @@ public class PricingTickService {
                     .divide(BigDecimal.valueOf(total), 4, RoundingMode.HALF_UP)
                     .min(BigDecimal.ONE);
 
-            long current = calculator.calculate(section.getBasePrice(), occupancyRatio, demandPressure);
+            long current = calculator.calculate(section.getBasePrice(), occupancyRatio, demandPressure, schedule.getDiscountPercent());
 
             PricingTick tick = PricingTick.of(
                     schedule.getId(), section.getId(),

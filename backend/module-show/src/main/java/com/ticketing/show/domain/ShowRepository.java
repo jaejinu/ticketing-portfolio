@@ -17,6 +17,10 @@ import java.util.UUID;
 @Repository
 public interface ShowRepository extends JpaRepository<Show, UUID> {
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select s from Show s where s.id = :id")
+    java.util.Optional<Show> findForUpdate(@org.springframework.data.repository.query.Param("id") UUID id);
+
     /** 공개된(PUBLISHED) 공연만 조회 — 사용자 측 API 용. */
     List<Show> findByStatusOrderByCreatedAtDesc(ShowStatus status);
 

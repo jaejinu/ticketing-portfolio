@@ -142,6 +142,14 @@ public class Show {
     public String getVenue() { return venue; }
     public String getDescription() { return description; }
     public String getPosterUrl() { return posterUrl; }
+    public void unpublish() {
+        if (status != ShowStatus.PUBLISHED && status != ShowStatus.DRAFT) {
+            throw new com.ticketing.common.error.BusinessException(com.ticketing.common.error.ErrorCode.INVALID_SHOW_STATE,
+                    "종료된 공연은 공개를 취소할 수 없습니다.");
+        }
+        status = ShowStatus.DRAFT;
+    }
+
     public ShowStatus getStatus() { return status; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public OffsetDateTime getUpdatedAt() { return updatedAt; }

@@ -66,6 +66,16 @@ public class ShowSchedule {
     @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
 
+    @Column(name = "discount_percent", nullable = false)
+    private int discountPercent;
+
+    public int getDiscountPercent() { return discountPercent; }
+    public void configureDiscount(int percent) {
+        if (status != ShowScheduleStatus.SCHEDULED || percent < 0 || percent > 30)
+            throw new BusinessException(ErrorCode.INVALID_SHOW_STATE, "판매 전 회차에 0~30% 할인만 설정할 수 있습니다.");
+        discountPercent = percent;
+    }
+
     /** JPA 용 기본 생성자. */
     protected ShowSchedule() {
     }

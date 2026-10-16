@@ -19,6 +19,7 @@ import java.util.UUID;
 @Service
 @Transactional
 public class ShowCommandService {
+    @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager entityManager;
 
     private final ShowRepository showRepository;
     private final com.ticketing.show.domain.ShowScheduleRepository scheduleRepository;
@@ -59,6 +60,8 @@ public class ShowCommandService {
         show.close();
         // 공연을 닫으면 회차도 닫는다. 예전엔 회차가 ON_SALE 로 남아 대기열에 줄을 설 수 있었다.
         for (com.ticketing.show.domain.ShowSchedule schedule : scheduleRepository.findByShowIdOrderByStartsAtAsc(showId)) {
+            scheduleRepository.findForUpdate(schedule.getId()).orElseThrow();
+            entityManager.refresh(schedule);
             if (schedule.getStatus() != com.ticketing.show.domain.ShowScheduleStatus.CLOSED) {
                 schedule.markClosed();
             }
@@ -66,12 +69,35 @@ public class ShowCommandService {
         return show;
     }
 
+    public Show unpublish(UUID organizerId, UUID showId) {
+        Show show = loadOwned(organizerId, showId);
+        requireNeverOpened(showId);
+        show.unpublish();
+        return show;
+    }
+
+    public void deleteDraft(UUID organizerId, UUID showId) {
+        Show show = loadOwned(organizerId, showId);
+        if (show.getStatus() != com.ticketing.show.domain.ShowStatus.DRAFT) {
+            throw new BusinessException(ErrorCode.INVALID_SHOW_STATE, "준비 중인 공연만 삭제할 수 있습니다.");
+        }
+        requireNeverOpened(showId);
+        showRepository.delete(show);
+    }
+
+    private void requireNeverOpened(UUID showId) {
+        if (scheduleRepository.findByShowIdOrderByStartsAtAsc(showId).stream()
+                .anyMatch(s -> s.getStatus() != com.ticketing.show.domain.ShowScheduleStatus.SCHEDULED)) {
+            throw new BusinessException(ErrorCode.INVALID_SHOW_STATE, "판매를 연 이력이 있는 공연은 삭제하거나 공개를 취소할 수 없습니다.");
+        }
+    }
+
     /**
      * 공연을 organizer 소유로 로드. 미존재 또는 소유자 불일치 시 BusinessException.
      * (organizer 가 남의 공연에 접근 시도 → 인증 통과한 적법한 요청이지만 권한 없음 → 403)
      */
     private Show loadOwned(UUID organizerId, UUID showId) {
-        Show show = showRepository.findById(showId)
+        Show show = showRepository.findForUpdate(showId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.SHOW_NOT_FOUND,
                         "공연을 찾을 수 없습니다. showId=" + showId));
         if (!show.getOrganizerId().equals(organizerId)) {

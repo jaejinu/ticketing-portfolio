@@ -10,7 +10,7 @@
  */
 
 import { z } from 'zod';
-import { apiRequest } from './client';
+import { apiRequest, apiRequestVoid } from './client';
 import {
   SectionSchema,
   ShowSchema,
@@ -101,8 +101,8 @@ export async function addSection(
   return apiRequest(`/organizer/schedules/${scheduleId}/sections`, { method: 'POST', json: input }, SectionSchema);
 }
 
-export async function changeSectionPrice(sectionId: string, basePrice: number): Promise<Section> {
-  return apiRequest(`/organizer/sections/${sectionId}/price`, { method: 'PATCH', json: { basePrice } }, SectionSchema);
+export async function changeSectionPrice(sectionId: string, basePrice: number, reason: string): Promise<Section> {
+  return apiRequest(`/organizer/sections/${sectionId}/price`, { method: 'PATCH', json: { basePrice, reason } }, SectionSchema);
 }
 
 const BulkResultSchema = z.object({ created: z.number().int() });
@@ -114,4 +114,22 @@ export async function bulkCreateSeats(sectionId: string, rows: string[], cols: n
     BulkResultSchema,
   );
   return body.created;
+}
+
+export async function configureDiscount(scheduleId: string, percent: number, reason: string) {
+  return apiRequest(`/organizer/schedules/${scheduleId}/discount`, { method: 'PATCH', json: { percent, reason } }, ShowScheduleSchema);
+}
+export async function markScheduleSoldOut(scheduleId: string) {
+  return apiRequest(`/organizer/schedules/${scheduleId}/sold-out`, { method: 'POST' }, ShowScheduleSchema);
+}
+
+export async function unpublishShow(showId: string) {
+  return apiRequestVoid(`/organizer/shows/${showId}/unpublish`, { method: 'POST' });
+}
+export async function deleteDraftShow(showId: string) {
+  return apiRequestVoid(`/organizer/shows/${showId}`, { method: 'DELETE' });
+}
+
+export async function deleteSeatRow(sectionId: string, row: string) {
+  return apiRequest(`/organizer/sections/${sectionId}/seats/rows/${encodeURIComponent(row)}`, { method: 'DELETE' }, z.object({ deleted: z.number() }));
 }

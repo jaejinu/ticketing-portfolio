@@ -69,6 +69,56 @@ class ScheduleLifecycleIntegrationTest extends ShowIntegrationTestBase {
     }
 
     @Test
+    void adminProxyEditRequiresAdminAndKeepsAuditActor() throws Exception {
+        String body="{\"changes\":{\"title\":\"관리자 수정\"},\"reason\":\"주최자 요청\"}";
+        send(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/v1/admin/shows/{id}",showId),body)
+                .andExpect(status().isForbidden());
+        jdbc.update("UPDATE users SET roles=array_append(roles,'ADMIN') WHERE id=(SELECT organizer_id FROM shows WHERE id=?)",UUID.fromString(showId));
+        String email = jdbc.queryForObject("SELECT email FROM users WHERE id=(SELECT organizer_id FROM shows WHERE id=?)",String.class,UUID.fromString(showId));
+        access = read(mvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"%s\",\"password\":\"Abcd1234!\"}".formatted(email)))).get("accessToken").asString();
+        send(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/v1/admin/shows/{id}",showId),body)
+                .andExpect(status().isOk()).andExpect(jsonPath("$.title").value("관리자 수정"));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM admin_audit_log WHERE action='SHOW_ADMIN_EDITED' AND target_id=?",Long.class,showId)).isEqualTo(1);
+    }
+
+    @Test
+    void deletingRowsUpdatesBothCapacitiesAndIsForbiddenAfterOpening() throws Exception {
+        addSeats().andExpect(status().isOk());
+        send(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete(
+                "/api/v1/organizer/sections/{id}/seats/rows/A", sectionId), "")
+                .andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT seat_count FROM sections WHERE id=?", Integer.class, UUID.fromString(sectionId))).isZero();
+        assertThat(jdbc.queryForObject("SELECT seat_total FROM show_schedules WHERE id=?", Integer.class, UUID.fromString(scheduleId))).isZero();
+        addSeats().andExpect(status().isOk());
+        send(post("/api/v1/organizer/shows/{id}/publish", showId), "").andExpect(status().isOk());
+        send(post("/api/v1/organizer/schedules/{id}/open", scheduleId), "").andExpect(status().isOk());
+        send(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete(
+                "/api/v1/organizer/sections/{id}/seats/rows/A", sectionId), "").andExpect(status().isConflict());
+    }
+
+    @Test
+    void unpublishAndDraftDeletionAreAllowedOnlyBeforeOpening() throws Exception {
+        addSeats().andExpect(status().isOk());
+        send(post("/api/v1/organizer/shows/{id}/publish", showId), "").andExpect(status().isOk());
+        send(post("/api/v1/organizer/shows/{id}/unpublish", showId), "").andExpect(status().isOk());
+        send(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/v1/organizer/shows/{id}", showId), "")
+                .andExpect(status().isNoContent());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM show_schedules WHERE id=?", Long.class, UUID.fromString(scheduleId))).isZero();
+    }
+
+    @Test
+    void soldOutCannotBeUnpublishedOrDeleted() throws Exception {
+        addSeats().andExpect(status().isOk());
+        send(post("/api/v1/organizer/shows/{id}/publish", showId), "").andExpect(status().isOk());
+        send(post("/api/v1/organizer/schedules/{id}/open", scheduleId), "").andExpect(status().isOk());
+        send(post("/api/v1/organizer/schedules/{id}/sold-out", scheduleId), "").andExpect(status().isOk());
+        send(post("/api/v1/organizer/shows/{id}/unpublish", showId), "").andExpect(status().isConflict());
+        send(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/v1/organizer/shows/{id}", showId), "")
+                .andExpect(status().isConflict());
+    }
+
+    @Test
     @DisplayName("좌석이 없으면 공개할 수 없고, 좌석을 등록하면 공개된다")
     void publishNeedsSeats() throws Exception {
         send(post("/api/v1/organizer/shows/{id}/publish", showId), "")

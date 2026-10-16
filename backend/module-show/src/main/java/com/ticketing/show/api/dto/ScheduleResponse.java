@@ -12,11 +12,11 @@ public record ScheduleResponse(
         OffsetDateTime endsAt,
         OffsetDateTime salesStartAt,
         int seatTotal,
-        String status) {
+        String status, int discountPercent) {
 
     public static ScheduleResponse of(ShowSchedule s) {
         return new ScheduleResponse(
                 s.getId(), s.getShowId(), s.getStartsAt(), s.getEndsAt(),
-                s.getSalesStartAt(), s.getSeatTotal(), s.getStatus().name());
+                s.getSalesStartAt(), s.getSeatTotal(), s.getStatus().name(), s.getDiscountPercent());
     }
 }

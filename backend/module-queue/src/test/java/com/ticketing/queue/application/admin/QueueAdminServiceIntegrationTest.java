@@ -69,6 +69,24 @@ class QueueAdminServiceIntegrationTest extends QueueIntegrationTestBase {
     RedissonClient redisson;
 
     @Test
+    void manualRulesExpireAndAllowDoesNotCreateDetectionWindows() {
+        String id = java.util.UUID.randomUUID().toString();
+        adminService.setRule("user", id, false, 600);
+        assertThat(macroService.isBlocked("user", id)).isTrue();
+        adminService.setRule("user", id, true, 30);
+        assertThat(macroService.isBlocked("user", id)).isFalse();
+        for (int i=0; i<10; i++) assertThat(macroService.recordAndEvaluate("user", id, "curl/test").blocked()).isFalse();
+        assertThat(adminService.listAllows()).anyMatch(b -> b.key().equals(id) && b.remainingSeconds() <= 30);
+        assertThat(redisson.getBucket(MacroDetectionService.WINDOW_PREFIX + "user:" + id).isExists()).isFalse();
+        adminService.removeAllow("user", id);
+        assertThat(adminService.listAllows()).noneMatch(b -> b.key().equals(id));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> adminService.setRule("ip", "example.com", true, 30))
+                .isInstanceOf(com.ticketing.common.error.BusinessException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> adminService.setRule("user", id, true, 86401))
+                .isInstanceOf(com.ticketing.common.error.BusinessException.class);
+    }
+
+    @Test
     @DisplayName("차단 마커 존재 → 목록에 노출 → 수동 해제 → 목록에서 제거")
     void blockList_and_unblock() {
         String ip = uniqueIp();

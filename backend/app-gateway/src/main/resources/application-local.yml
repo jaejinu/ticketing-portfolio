@@ -43,6 +43,10 @@ spring:
   mail:
     host: ${SMTP_HOST:localhost}
     port: ${SMTP_PORT:1025}
+    properties:
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
@@ -120,6 +124,8 @@ app:
   #   - smtp.quota-per-min 120: SMTP relay 가 보호되어야 하므로 작게.
   #   - webhook.quota-per-min 300: 사용자별 webhook 합산 한도.
   alert:
+    refund-delivery:
+      enabled: true
     fcm:
       # fcm-mock 은 실제 FCM v1 API 경로를 흉내낸다 — /send 가 아니라 messages:send.
       mock-url:      ${ALERT_FCM_URL:http://localhost:8086/v1/projects/ticketing-dev/messages:send}

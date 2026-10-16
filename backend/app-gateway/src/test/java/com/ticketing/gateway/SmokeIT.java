@@ -117,6 +117,12 @@ class SmokeIT {
     @Autowired ApplicationContext context;
 
     @Test
+    void refundBackfillCanReadTheIntegratedPaymentSchema() {
+        var queue = context.getBean(com.ticketing.alert.refund.RefundNotificationQueue.class);
+        assertThat(queue.backfill()).isGreaterThanOrEqualTo(0);
+    }
+
+    @Test
     void healthEndpointReturnsUp() throws Exception {
         mvc.perform(get("/health"))
                 .andExpect(status().isOk())

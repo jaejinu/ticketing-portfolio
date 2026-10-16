@@ -38,6 +38,7 @@ import java.util.UUID;
 @PreAuthorize("hasRole('ADMIN')")
 public class AdminUserController {
 
+    private final java.time.Clock clock;
     private final AdminUserService adminUserService;
     private final AuditRecorder audit;
     private final com.ticketing.auth.domain.UserRepository users;
@@ -45,7 +46,8 @@ public class AdminUserController {
 
     public AdminUserController(AdminUserService adminUserService, AuditRecorder audit,
                                com.ticketing.auth.domain.UserRepository users,
-                               com.ticketing.auth.application.AccountLockService lockService) {
+                               com.ticketing.auth.application.AccountLockService lockService, java.time.Clock clock) {
+        this.clock = clock;
         this.adminUserService = adminUserService;
         this.audit = audit;
         this.users = users;
@@ -54,16 +56,28 @@ public class AdminUserController {
 
     /** 이메일 일부(3자 이상)로 찾기. 잠김 여부는 DB 상태 또는 계정 전체 잠금(Redis) 기준. */
     @GetMapping("/users")
-    public ResponseEntity<Map<String, Object>> search(@RequestParam("q") String q) {
-        String needle = q == null ? "" : q.trim();
-        if (needle.length() < 3) {
-            return ResponseEntity.ok(Map.of("users", java.util.List.of()));
-        }
-        var found = users.findTop20ByEmailContainingIgnoreCaseOrderByEmailAsc(needle).stream()
+    public ResponseEntity<Map<String, Object>> search(@RequestParam(defaultValue = "") String q,
+            @RequestParam(defaultValue = "false") boolean lockedOnly,
+            @RequestParam(defaultValue = "0") int page) {
+        if (page < 0 || page > 10000) throw new com.ticketing.common.error.BusinessException(
+                com.ticketing.common.error.ErrorCode.INVALID_REQUEST, "페이지 범위가 올바르지 않습니다.");
+        String needle = q.trim();
+        if (!lockedOnly && needle.length() < 3) return ResponseEntity.ok(Map.of("users", java.util.List.of(), "totalPages", 0, "totalElements", 0));
+        org.springframework.data.jpa.domain.Specification<com.ticketing.auth.domain.User> filter = (root, query, cb) -> {
+            var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+            if (!needle.isEmpty()) predicates.add(cb.like(cb.lower(root.get("email")), "%" + needle.toLowerCase(java.util.Locale.ROOT).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%", '\\'));
+            if (lockedOnly) {
+                predicates.add(cb.equal(root.get("status"), com.ticketing.auth.domain.UserStatus.LOCKED));
+                predicates.add(cb.greaterThan(root.get("lockedUntil"), java.time.OffsetDateTime.now(clock)));
+            }
+            return cb.and(predicates.toArray(jakarta.persistence.criteria.Predicate[]::new));
+        };
+        var found = users.findAll(filter, org.springframework.data.domain.PageRequest.of(page, 20,
+                org.springframework.data.domain.Sort.by("email").ascending()));
+        return ResponseEntity.ok(Map.of("users", found.getContent().stream()
                 .map(u -> new AdminUserView(u.getId(), u.getEmail(), u.getName(), u.getRoles(), u.getStatus().name(),
-                        lockService.isLockedOnAllIps(u.getId())))
-                .toList();
-        return ResponseEntity.ok(Map.of("users", found));
+                        lockService.isLockedOnAllIps(u.getId()))).toList(),
+                "totalPages", found.getTotalPages(), "totalElements", found.getTotalElements()));
     }
 
     public record AdminUserView(UUID userId, String email, String name, java.util.List<String> roles,

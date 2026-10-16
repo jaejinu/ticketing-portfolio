@@ -89,4 +89,14 @@ class PricingCalculatorTest {
         // raw = base * (1 - 3) = -200000 → floor = base * 0.7 = 70000
         assertThat(price).isEqualTo(70_000L);
     }
+    @Test
+    void optInDiscountFadesWithOccupancyAndPreservesDefault() {
+        assertThat(calculator.calculate(100000, BigDecimal.ZERO, BigDecimal.ZERO, 30)).isEqualTo(70000);
+        assertThat(calculator.calculate(100000, new BigDecimal("0.5"), BigDecimal.ZERO, 30)).isEqualTo(110000);
+        assertThat(calculator.calculate(100000, BigDecimal.ONE, BigDecimal.ZERO, 30)).isEqualTo(150000);
+        assertThat(calculator.calculate(100000, BigDecimal.ZERO, BigDecimal.ZERO, 0)).isEqualTo(100000);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> calculator.calculate(100000, BigDecimal.ZERO, BigDecimal.ZERO, 31))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
 }

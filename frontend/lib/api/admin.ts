@@ -264,3 +264,19 @@ export async function listAudit(targetId?: string): Promise<AuditEntry[]> {
   );
   return body.entries;
 }
+
+export const PaymentReportSchema = z.object({
+  payments: z.array(AdminPaymentSchema), totalElements: z.number(), totalPages: z.number(), page: z.number(),
+  totals: z.array(z.object({ status: z.string(), refundPending: z.boolean(), count: z.number(), amount: z.number() })),
+});
+export async function getPaymentReport(scheduleId: string, holderId: string, page: number) {
+  const query = new URLSearchParams({ page: String(page), size: '25' });
+  if (scheduleId) query.set('scheduleId', scheduleId);
+  if (holderId) query.set('holderId', holderId);
+  return apiRequest(`/admin/payment-report?${query}`, { method: 'GET' }, PaymentReportSchema);
+}
+
+export async function searchUserPage(q: string, lockedOnly: boolean, page: number) {
+  return apiRequest(`/admin/users?${new URLSearchParams({ q, lockedOnly: String(lockedOnly), page: String(page) })}`,
+    { method: 'GET' }, z.object({ users: z.array(AdminUserSchema), totalPages: z.number().default(1), totalElements: z.number().optional() }));
+}

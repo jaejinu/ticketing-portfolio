@@ -10,7 +10,7 @@ import java.math.RoundingMode;
  *
  * <h2>공식</h2>
  * <pre>
- *   raw  = basePrice * (1 + alpha * occupancy + beta * demand)
+ *   raw  = basePrice * (1 + alpha * occupancy + beta * demand - discount * (1 - occupancy))
  *   clamped = clamp(raw, basePrice * floor, basePrice * ceiling)
  *   price = round(clamped)
  * </pre>
@@ -46,13 +46,21 @@ public class PricingCalculator {
      * @return 산출된 현재 가격 (원)
      */
     public long calculate(long basePrice, BigDecimal occupancyRatio, BigDecimal demandPressure) {
+        return calculate(basePrice, occupancyRatio, demandPressure, 0);
+    }
+
+    /** Opt-in discount fades to zero as occupancy increases; zero preserves the original formula. */
+    public long calculate(long basePrice, BigDecimal occupancyRatio, BigDecimal demandPressure, int discountPercent) {
+        if (discountPercent < 0 || discountPercent > 30) throw new IllegalArgumentException("discount must be 0..30");
         BigDecimal base = BigDecimal.valueOf(basePrice);
         BigDecimal multiplier = BigDecimal.ONE
                 .add(props.getAlpha().multiply(clamp01(occupancyRatio)))
-                .add(props.getBeta().multiply(clamp01(demandPressure)));
+                .add(props.getBeta().multiply(clamp01(demandPressure)))
+                .subtract(BigDecimal.valueOf(discountPercent, 2).multiply(BigDecimal.ONE.subtract(clamp01(occupancyRatio))));
 
         BigDecimal raw = base.multiply(multiplier);
         BigDecimal floor = base.multiply(props.getFloorMultiplier());
+        if (discountPercent > 0) floor = floor.max(base.multiply(BigDecimal.ONE.subtract(BigDecimal.valueOf(discountPercent, 2))));
         BigDecimal ceiling = base.multiply(props.getCeilingMultiplier());
 
         BigDecimal clamped = raw.max(floor).min(ceiling);

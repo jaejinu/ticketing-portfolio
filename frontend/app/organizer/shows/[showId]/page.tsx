@@ -8,8 +8,10 @@
 
 'use client';
 
+import { deleteSeatRow, configureDiscount, markScheduleSoldOut, unpublishShow, deleteDraftShow } from '@/lib/api/organizer';
 import { use, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DemandInsight } from '@/components/organizer/DemandInsight';
 import { ConfirmButton } from '@/components/backoffice/ConfirmButton';
@@ -94,6 +96,7 @@ function useRefreshShows() {
 /* ── 공연 정보 · 공개 · 종료 ─────────────────────────────── */
 
 function ShowHeader({ show }: { show: Show }) {
+  const router = useRouter();
   const refresh = useRefreshShows();
   const status = statusOf(SHOW_STATUS, show.status ?? 'DRAFT');
   const [editing, setEditing] = useState(false);
@@ -109,8 +112,11 @@ function ShowHeader({ show }: { show: Show }) {
   });
   const publish = useMutation({ mutationFn: () => publishShow(show.id), onSuccess: refresh });
   const close = useMutation({ mutationFn: () => closeShow(show.id), onSuccess: refresh });
+  const unpublish = useMutation({ mutationFn: () => unpublishShow(show.id), onSuccess: refresh });
+  const remove = useMutation({ mutationFn: () => deleteDraftShow(show.id), onSuccess: () => { refresh(); router.push('/organizer'); } });
+  const neverOpened = (show.schedules ?? []).every((s) => s.status === 'SCHEDULED');
   const hasSeats = (show.schedules ?? []).some((s) => (s.seatTotal ?? 0) > 0);
-  const error = save.error ?? publish.error ?? close.error;
+  const error = save.error ?? publish.error ?? close.error ?? unpublish.error ?? remove.error;
 
   return (
     <header className="space-y-4">
@@ -137,6 +143,12 @@ function ShowHeader({ show }: { show: Show }) {
           >
             공연 공개
           </ConfirmButton>
+        )}
+        {show.status === 'PUBLISHED' && neverOpened && (
+          <ConfirmButton question="판매 전 공연을 목록에서 숨기고 준비 중으로 돌릴까요?" pending={unpublish.isPending} onConfirm={() => unpublish.mutate()}>공개 취소</ConfirmButton>
+        )}
+        {show.status === 'DRAFT' && neverOpened && (
+          <ConfirmButton question="공연과 등록한 회차·좌석을 영구 삭제할까요? 되돌릴 수 없어요." pending={remove.isPending} onConfirm={() => remove.mutate()}>준비 중 공연 삭제</ConfirmButton>
         )}
         {show.status !== 'CLOSED' && (
           <ConfirmButton
@@ -268,6 +280,10 @@ function ScheduleCard({ show, schedule }: { show: Show; schedule: ShowSchedule }
   const queryClient = useQueryClient();
   const status = statusOf(SCHEDULE_STATUS, schedule.status ?? 'SCHEDULED');
   const [insight, setInsight] = useState(false);
+  const [discountPercent, setDiscountPercent] = useState(String(schedule.discountPercent ?? 0));
+  const [discountReason, setDiscountReason] = useState('');
+  const discount = useMutation({ mutationFn: () => configureDiscount(schedule.id, Number(discountPercent), discountReason.trim()), onSuccess: refresh });
+  const soldOut = useMutation({ mutationFn: () => markScheduleSoldOut(schedule.id), onSuccess: refresh });
   const sectionsKey = ['organizer', 'sections', schedule.id];
   const sections = useQuery({
     queryKey: sectionsKey,
@@ -294,7 +310,7 @@ function ScheduleCard({ show, schedule }: { show: Show; schedule: ShowSchedule }
   const priceLocked =
     schedule.status !== 'SCHEDULED' ||
     (schedule.salesStartAt ? new Date(schedule.salesStartAt) <= new Date() : false);
-  const error = open.error ?? close.error;
+  const error = open.error ?? close.error ?? discount.error ?? soldOut.error;
 
   return (
     <article className="surface-card space-y-4">
@@ -314,6 +330,7 @@ function ScheduleCard({ show, schedule }: { show: Show; schedule: ShowSchedule }
             {open.isPending ? '여는 중…' : '판매 오픈'}
           </Button>
         )}
+        {schedule.status === 'ON_SALE' && <ConfirmButton question="잔여 좌석이 있어도 판매를 매진 상태로 중단할까요?" pending={soldOut.isPending} onConfirm={() => soldOut.mutate()}>수동 매진</ConfirmButton>}
         {!closed && (
           <ConfirmButton
             question="이 회차의 판매를 끝낼까요? 되돌릴 수 없어요."
@@ -335,6 +352,14 @@ function ScheduleCard({ show, schedule }: { show: Show; schedule: ShowSchedule }
           {errorText(error)}
         </Notice>
       )}
+      {seatMapEditable && <form className="flex flex-wrap items-end gap-3" onSubmit={e => { e.preventDefault(); discount.mutate(); }}>
+        <Field label="최대 할인율(%)" hint="0은 할인 비활성화. 수요가 적을 때만 최대 30%까지 기준가 아래로 내려갑니다.">
+          <Input type="number" min={0} max={30} step={1} required value={discountPercent} onChange={e => setDiscountPercent(e.target.value)} />
+        </Field>
+        <p className="text-sm muted">설정 하한: 기준가의 {100 - Number(discountPercent)}% (최대 할인율 {discountPercent}%). 판매 오픈 후 변경할 수 없습니다.</p>
+        <Field label="할인 설정 사유"><Input required maxLength={200} value={discountReason} onChange={e => setDiscountReason(e.target.value)} /></Field>
+        <Button type="submit" disabled={discount.isPending || !discountReason.trim()}>할인 설정 저장</Button>
+      </form>}
       {insight && <DemandInsight showId={show.id} scheduleId={schedule.id} />}
 
       <div className="space-y-3">
@@ -374,9 +399,12 @@ function SectionRow({
   onChanged: () => void;
 }) {
   const [price, setPrice] = useState(String(section.basePrice));
+  const [priceReason, setPriceReason] = useState('');
+  const [removeRow, setRemoveRow] = useState('');
+  const removeSeats = useMutation({ mutationFn: () => deleteSeatRow(section.id, removeRow.trim()), onSuccess: onChanged });
   const [rows, setRows] = useState('');
   const [cols, setCols] = useState('');
-  const changePrice = useMutation({ mutationFn: () => changeSectionPrice(section.id, Number(price)), onSuccess: onChanged });
+  const changePrice = useMutation({ mutationFn: () => changeSectionPrice(section.id, Number(price), priceReason.trim()), onSuccess: onChanged });
   const addSeats = useMutation({
     mutationFn: () => bulkCreateSeats(section.id, parseRows(rows), Number(cols)),
     onSuccess: () => {
@@ -425,11 +453,12 @@ function SectionRow({
                 onChange={(e) => setPrice(e.target.value)}
               />
             </Field>
+            <Field label="가격 변경 사유"><Input value={priceReason} maxLength={200} required disabled={priceLocked} onChange={e => setPriceReason(e.target.value)} /></Field>
             <Button
               type="submit"
               size="sm"
               variant="outline"
-              disabled={priceLocked || changePrice.isPending || Number(price) === section.basePrice}
+              disabled={priceLocked || changePrice.isPending || Number(price) === section.basePrice || !priceReason.trim()}
             >
               변경
             </Button>
@@ -451,11 +480,15 @@ function SectionRow({
               {seatCount > 0 ? `${seatCount}석 등록` : '좌석 등록'}
             </Button>
           </form>
+          <div className="flex flex-wrap items-end gap-2">
+            <Field label="판매에서 제외할 행" hint="판매 전 해당 행의 좌석을 삭제합니다. 다시 등록할 수 있어요."><Input maxLength={5} value={removeRow} onChange={e => setRemoveRow(e.target.value)} /></Field>
+            <ConfirmButton question={`${removeRow.trim()}행의 모든 좌석을 삭제할까요?`} disabled={!removeRow.trim()} pending={removeSeats.isPending} onConfirm={() => removeSeats.mutate()}>행 좌석 삭제</ConfirmButton>
+          </div>
         </div>
       )}
-      {(changePrice.error ?? addSeats.error) && (
+      {(changePrice.error ?? addSeats.error ?? removeSeats.error) && (
         <Notice tone="error" title="반영하지 못했어요.">
-          {errorText(changePrice.error ?? addSeats.error)}
+          {errorText(changePrice.error ?? addSeats.error ?? removeSeats.error)}
         </Notice>
       )}
     </div>

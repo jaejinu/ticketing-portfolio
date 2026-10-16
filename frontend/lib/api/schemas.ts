@@ -160,6 +160,7 @@ export const ShowScheduleStatusSchema = z.enum([
 export type ShowScheduleStatus = z.infer<typeof ShowScheduleStatusSchema>;
 
 export const ShowScheduleSchema = z.object({
+  discountPercent: z.number().int().min(0).max(30).optional(),
   id: z.string(),
   showId: z.string(),
   startsAt: z.string(),

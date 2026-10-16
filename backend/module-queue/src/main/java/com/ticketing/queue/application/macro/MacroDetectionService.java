@@ -51,6 +51,7 @@ public class MacroDetectionService {
 
     private static final Logger log = LoggerFactory.getLogger(MacroDetectionService.class);
 
+    public static final String ALLOW_PREFIX = "queue:macro:allowed:";
     public static final String WINDOW_PREFIX = "queue:macro:window:";
     public static final String BLOCK_PREFIX = "queue:macro:blocked:";
 
@@ -108,6 +109,7 @@ public class MacroDetectionService {
      * </p>
      */
     public boolean isBlocked(String scope, String key) {
+        if (redisson.getBucket(ALLOW_PREFIX + scope + ":" + key).isExists()) return false;
         RBucket<String> b = redisson.getBucket(blockedKey(scope, key));
         boolean blocked = b.isExists();
         if (blocked) blockedRequestsCounter.increment();
@@ -128,6 +130,7 @@ public class MacroDetectionService {
      * @return 판정 결과 (통과 or 새로 차단됨)
      */
     public Decision recordAndEvaluate(String scope, String key, String userAgent) {
+        if (redisson.getBucket(ALLOW_PREFIX + scope + ":" + key).isExists()) return Decision.allow(0);
         long now = clock.millis();
 
         // 슬라이딩 윈도우에 timestamp 추가.

@@ -113,6 +113,20 @@ class AdminUserIntegrationTest extends AuthIntegrationTestBase {
         get(plain.access(), "/api/v1/admin/users?q=findme").andExpect(status().isForbidden());
     }
 
+    @Test
+    void lockedFilterExcludesExpiredAccountsAndEscapesWildcards() throws Exception {
+        Session admin = admin("lock-search");
+        Session active = login(signup("locked-now"));
+        Session expired = login(signup("locked-before"));
+        jdbc.update("UPDATE users SET status='LOCKED',locked_until=now()+interval '1 hour' WHERE id=?", active.userId());
+        jdbc.update("UPDATE users SET status='LOCKED',locked_until=now()-interval '1 hour' WHERE id=?", expired.userId());
+        var result = json.readTree(get(admin.access(), "/api/v1/admin/users?lockedOnly=true&q=locked-").andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(result.get("users").size()).isEqualTo(1);
+        assertThat(result.get("users").get(0).get("userId").asString()).isEqualTo(active.userId().toString());
+        get(admin.access(), "/api/v1/admin/users?q=___").andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
+        get(admin.access(), "/api/v1/admin/users?q=locked&page=-1").andExpect(status().isBadRequest());
+    }
+
     // ---- fixtures -----------------------------------------------------------
 
     private Session admin(String name) throws Exception {

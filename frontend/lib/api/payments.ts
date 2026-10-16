@@ -51,3 +51,12 @@ export async function listMyPayments(): Promise<PaymentDetail[]> {
   const body = await apiRequest('/payments', { method: 'GET' }, PaymentDetailListSchema);
   return body.payments;
 }
+
+export async function getRefundQuote(paymentId: string) {
+  return apiRequest(`/payments/${paymentId}/refund-quote`, { method: 'GET' }, z.object({
+    eligible: z.boolean(), amount: z.number(), deadline: z.string(), policy: z.string(),
+  }));
+}
+export async function refundMyPayment(paymentId: string) {
+  return apiRequest(`/payments/${paymentId}/refund`, { method: 'POST' }, PaymentSchema);
+}

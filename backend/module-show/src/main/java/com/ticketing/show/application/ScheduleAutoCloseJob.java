@@ -59,7 +59,7 @@ public class ScheduleAutoCloseJob {
     public int closePastSchedules() {
         OffsetDateTime now = OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC);
         List<ShowSchedule> past = scheduleRepository.findByStatusInAndStartsAtBefore(
-                EnumSet.of(ShowScheduleStatus.SCHEDULED, ShowScheduleStatus.ON_SALE), now);
+                EnumSet.of(ShowScheduleStatus.SCHEDULED, ShowScheduleStatus.ON_SALE, ShowScheduleStatus.SOLD_OUT), now);
         for (ShowSchedule schedule : past) {
             schedule.markClosed();
         }

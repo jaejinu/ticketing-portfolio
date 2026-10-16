@@ -89,4 +89,21 @@ public class OrganizerScheduleController {
         audit.record(me.userId(), "SCHEDULE_CLOSED", "SCHEDULE", scheduleId, Map.of());
         return ResponseEntity.ok(ScheduleResponse.of(schedule));
     }
+    public record DiscountRequest(@jakarta.validation.constraints.Min(0) @jakarta.validation.constraints.Max(30) int percent,
+                                  @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max=200) String reason) {}
+    @PatchMapping("/schedules/{scheduleId}/discount")
+    public ScheduleResponse discount(@AuthenticatedUser AuthPrincipal me, @PathVariable UUID scheduleId,
+                                     @Valid @RequestBody DiscountRequest req) {
+        ShowSchedule s = scheduleCommandService.configureDiscount(me.userId(), scheduleId, req.percent());
+        audit.record(me.userId(), "SCHEDULE_DISCOUNT_CHANGED", "SCHEDULE", scheduleId,
+                Map.of("percent", req.percent(), "reason", req.reason()));
+        return ScheduleResponse.of(s);
+    }
+    @PostMapping("/schedules/{scheduleId}/sold-out")
+    public ScheduleResponse soldOut(@AuthenticatedUser AuthPrincipal me, @PathVariable UUID scheduleId) {
+        ShowSchedule s = scheduleCommandService.soldOut(me.userId(), scheduleId);
+        audit.record(me.userId(), "SCHEDULE_SOLD_OUT", "SCHEDULE", scheduleId, Map.of());
+        return ScheduleResponse.of(s);
+    }
+
 }

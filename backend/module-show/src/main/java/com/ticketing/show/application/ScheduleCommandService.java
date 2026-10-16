@@ -23,6 +23,9 @@ import java.util.UUID;
 @Transactional
 public class ScheduleCommandService {
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
     private final ShowRepository showRepository;
     private final ShowScheduleRepository scheduleRepository;
     private final java.time.Clock clock;
@@ -83,8 +86,20 @@ public class ScheduleCommandService {
         return schedule;
     }
 
+    public ShowSchedule configureDiscount(UUID organizerId, UUID scheduleId, int percent) {
+        ShowSchedule schedule = loadOwnedSchedule(organizerId, scheduleId);
+        schedule.configureDiscount(percent);
+        return schedule;
+    }
+
+    public ShowSchedule soldOut(UUID organizerId, UUID scheduleId) {
+        ShowSchedule schedule = loadOwnedSchedule(organizerId, scheduleId);
+        schedule.markSoldOut();
+        return schedule;
+    }
+
     private Show loadOwnedShow(UUID organizerId, UUID showId) {
-        Show show = showRepository.findById(showId)
+        Show show = showRepository.findForUpdate(showId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.SHOW_NOT_FOUND,
                         "공연을 찾을 수 없습니다. showId=" + showId));
         if (!show.getOrganizerId().equals(organizerId)) {
@@ -95,9 +110,13 @@ public class ScheduleCommandService {
 
     /** schedule → show.organizer 검증. */
     ShowSchedule loadOwnedSchedule(UUID organizerId, UUID scheduleId) {
-        ShowSchedule schedule = scheduleRepository.findById(scheduleId)
+        ShowSchedule reference = scheduleRepository.findById(scheduleId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND, "회차를 찾을 수 없습니다."));
+        loadOwnedShow(organizerId, reference.getShowId());
+        ShowSchedule schedule = scheduleRepository.findForUpdate(scheduleId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND,
                         "회차를 찾을 수 없습니다. scheduleId=" + scheduleId));
+        entityManager.refresh(schedule);
         loadOwnedShow(organizerId, schedule.getShowId());
         return schedule;
     }

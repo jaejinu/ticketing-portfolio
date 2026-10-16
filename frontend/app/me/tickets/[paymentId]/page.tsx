@@ -1,5 +1,6 @@
 "use client";
 import { use } from "react";
+import { RefundAction } from "@/components/booking/RefundAction";
 import Link from "next/link";
 import { useMyPayments } from "@/lib/query/useMyPayments";
 import { TicketSummary } from "@/components/booking/TicketSummary";
@@ -110,6 +111,7 @@ export default function TicketDetailPage({
                   : "공연 일시와 좌석 번호를 확인해 주세요. 체험 예매이므로 실제 입장권으로 사용할 수 없습니다."}
               </p>
             )}
+            {ticket.status === "APPROVED" && !ticket.refundPending && !query.isError && <RefundAction paymentId={ticket.paymentId} />}
           </aside>
         </div>
       )}

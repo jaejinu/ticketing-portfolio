@@ -42,4 +42,10 @@ public class OrganizerSeatController {
         int created = seatBulkService.bulkCreate(me.userId(), sectionId, req.rows(), req.cols());
         return ResponseEntity.ok(Map.of("created", created));
     }
+    @org.springframework.web.bind.annotation.DeleteMapping("/sections/{sectionId}/seats/rows/{row}")
+    public ResponseEntity<Map<String, Object>> deleteRow(@AuthenticatedUser AuthPrincipal me,
+            @PathVariable UUID sectionId, @PathVariable String row) {
+        return ResponseEntity.ok(Map.of("deleted", seatBulkService.deleteRow(me.userId(), sectionId, row)));
+    }
+
 }

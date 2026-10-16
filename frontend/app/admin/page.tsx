@@ -14,6 +14,10 @@
 'use client';
 
 import { useState } from 'react';
+import { RefundNotifications } from '@/components/backoffice/RefundNotifications';
+import { AdminShows } from '@/components/backoffice/AdminShows';
+import { MacroRules } from '@/components/backoffice/MacroRules';
+import { PaymentExplorer } from '@/components/backoffice/PaymentExplorer';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ConfirmButton } from '@/components/backoffice/ConfirmButton';
 import {
@@ -43,7 +47,7 @@ import {
   refundSchedule,
   requeueFailedOutbox,
   revokeUserSessions,
-  searchUsers,
+  searchUserPage,
   unblockMacro,
   unlockUser,
   type AdminUser,
@@ -59,6 +63,9 @@ const TABS = [
   { id: 'users', label: '사용자' },
   { id: 'payments', label: '결제·환불' },
   { id: 'audit', label: '감사 기록' },
+  { id: 'reports', label: '판매 리포트' },
+  { id: 'shows', label: '공연 관리' },
+  { id: 'notifications', label: '환불 알림' },
 ] as const;
 type TabId = (typeof TABS)[number]['id'];
 
@@ -111,6 +118,9 @@ export default function AdminHomePage() {
             {tab === 'users' && <UsersTab />}
             {tab === 'payments' && <PaymentsTab />}
             {tab === 'audit' && <AuditTab />}
+            {tab === 'reports' && <PaymentExplorer />}
+            {tab === 'shows' && <AdminShows />}
+            {tab === 'notifications' && <RefundNotifications />}
           </div>
         </>
       )}
@@ -152,6 +162,7 @@ function DefenseTab({ traffic }: { traffic: { data?: TrafficStats; isError: bool
 
   return (
     <div className="space-y-8">
+      <MacroRules />
       <section className="space-y-3">
         <SectionTitle title="트래픽 방어" hint="백엔드가 켜진 뒤부터 누적" />
         {traffic.isError && <Notice tone="error" title="현황을 불러오지 못했어요.">{errorText(traffic.error)}</Notice>}
@@ -278,10 +289,12 @@ function DefenseTab({ traffic }: { traffic: { data?: TrafficStats; isError: bool
 function UsersTab() {
   const [input, setInput] = useState('');
   const [q, setQ] = useState('');
+  const [lockedOnly, setLockedOnly] = useState(false);
+  const [page, setPage] = useState(0);
   const users = useQuery({
-    queryKey: ['admin', 'users', q],
-    queryFn: () => searchUsers(q),
-    enabled: q.length >= 3,
+    queryKey: ['admin', 'users', q, lockedOnly, page],
+    queryFn: () => searchUserPage(q, lockedOnly, page),
+    enabled: lockedOnly || q.length >= 3,
   });
   return (
     <div className="space-y-4">
@@ -290,22 +303,30 @@ function UsersTab() {
         onSubmit={(e) => {
           e.preventDefault();
           setQ(input.trim());
+          setPage(0);
         }}
       >
         <Field label="이메일로 찾기 (3자 이상)">
           <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="name@example.com" />
         </Field>
-        <Button type="submit" size="sm" disabled={input.trim().length < 3}>
+        <Button type="submit" size="sm" disabled={!lockedOnly && input.trim().length < 3}>
           찾기
         </Button>
       </form>
+      <label className="flex items-center gap-2"><input type="checkbox" checked={lockedOnly} onChange={e => { setLockedOnly(e.target.checked); setPage(0); }} />현재 계정 전체가 잠긴 사용자만 보기</label>
+      <p className="text-sm muted">IP별 잠금은 제외합니다. 구매자 ID로 판매 리포트에서 결제를 검색할 수 있어요.</p>
       {users.isError && <Notice tone="error" title="찾지 못했어요.">{errorText(users.error)}</Notice>}
-      {users.data?.length === 0 && <Notice title="일치하는 사용자가 없어요." />}
+      {users.data?.users.length === 0 && <Notice title="일치하는 사용자가 없어요." />}
       <ul className="space-y-3">
-        {users.data?.map((u) => (
+        {users.data?.users.map((u) => (
           <UserRow key={u.userId} user={u} />
         ))}
       </ul>
+      {users.data && <nav aria-label="사용자 페이지" className="flex items-center gap-3">
+        <Button disabled={page === 0 || users.isFetching} onClick={() => setPage(p => p - 1)}>이전</Button>
+        <span>{page + 1} / {Math.max(1, users.data.totalPages)}</span>
+        <Button disabled={page + 1 >= users.data.totalPages || users.isFetching} onClick={() => setPage(p => p + 1)}>다음</Button>
+      </nav>}
     </div>
   );
 }
@@ -325,6 +346,7 @@ function UserRow({ user }: { user: AdminUser }) {
 
   return (
     <li className="surface-card space-y-3">
+      <p className="text-xs muted break-all">구매자 ID: {user.userId}</p>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-semibold">{user.name}</p>
