@@ -42,11 +42,11 @@ Hybrid v1 디자인을 적용한 티켓 예매 프론트엔드입니다. 홈·�
 
 ## 사전 요구사항
 
-- Node.js >= 20 (권장 22)
+- Node.js 24.x
 - pnpm 9
 
 ```bash
-node --version    # v20.x 이상
+node --version    # v24.x
 corepack enable && corepack prepare pnpm@9 --activate
 ```
 
@@ -141,7 +141,7 @@ Playwright가 3012 포트에서 빌드 결과를 실행합니다. 데스크톱(1
 
 워크플로: [frontend.yml](../.github/workflows/frontend.yml). 프론트엔드 또는 이 워크플로가 바뀐 PR과 `main` push에서 실행되며 수동 실행도 지원합니다. GitHub에 반영된 뒤 동작합니다.
 
-1. Ubuntu 24.04·Node 22에서 `packageManager`에 지정한 pnpm으로 frozen lockfile 설치.
+1. Ubuntu 24.04·Node 24에서 `packageManager`에 지정한 pnpm으로 frozen lockfile 설치.
 2. 운영 의존성 High 이상 감사 → 린트 → 프로덕션 빌드 → 타입 검사. 빌드에서 Next 경로 타입을 먼저 생성하므로 새 체크아웃에서도 타입 검사를 실행할 수 있습니다.
 3. Chromium·WebKit과 Linux 의존성을 설치하고 기존 3개 프로젝트의 브라우저 테스트 실행.
 4. HTML 리포트·스크린샷·실패 trace를 `frontend-browser-report-<시도 번호>` 아티팩트로 7일 보관.

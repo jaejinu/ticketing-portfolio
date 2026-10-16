@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   readiness:
-    if: github.repository == 'jaejinu/ticketing'
+    if: github.repository == 'jaejinu/ticketing-portfolio'
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     steps:

@@ -90,6 +90,8 @@ make test
 - 프론트 브라우저 테스트는 API 모의 응답 기반이다. 실제 프론트·백엔드·Mock PG를 연결한
   결제·환불·PG 장애 복구는 [2026-10-16 검증 기록](docs/qa/2026-10-16-refund-ui-verification.md)을 참고한다. 공연 목록부터 대기열·좌석 선택·결제·환불까지의 추가 브라우저 실연동 결과는 [후속 검증 기록](docs/qa/2026-10-16-followup-verification.md)에 정리했다.
 
+[운영 보완·백업 복원·다중 서버·Node 24 검증 기록](docs/qa/2026-10-16-operations-verification.md)도 확인할 수 있습니다.
+
 ## 구조
 
 ```mermaid

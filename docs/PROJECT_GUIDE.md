@@ -356,7 +356,7 @@ python3 scripts/public-demo.py publish
 - 환불 처리 중: PG 상태, 결제 의도/lease, 복구 스케줄러 로그 확인. DB를 수동 REFUNDED로 바꾸지 않는다.
 - 이벤트 지연: Outbox 미발행/실패, Kafka listener 주소, consumer lag 확인.
 
-외부 감시는 `.github/workflows/public-demo-monitor.yml`이 15분 간격으로 Vercel 페이지와 `/api/health`를 확인하도록 구성했다. readiness는 실제 백엔드 공연 목록을 읽고 정상 JSON일 때만 200을 반환한다. 장애·timeout·잘못된 응답은 503이다. GitHub cron 실행 지연과 알림 구독 설정이 있으므로 즉각적인 호출 알림 SLA가 아니다. `workflow_dispatch`로 수동 검사할 수 있다.
+외부 감시는 공개 미러의 `.github/workflows/public-demo-monitor.yml`이 15분 간격으로 Vercel 페이지와 `/api/health`를 확인하도록 구성했다. readiness는 실제 백엔드 공연 목록을 읽고 정상 JSON일 때만 200을 반환한다. 장애·timeout·잘못된 응답은 503이다. GitHub cron 실행 지연과 알림 구독 설정이 있으므로 즉각적인 호출 알림 SLA가 아니다. `workflow_dispatch`로 수동 검사할 수 있다.
 
 ## 14. 백업·원격 보관·복구
 
@@ -453,6 +453,14 @@ node --test store.test.js
 재실행: `python3 loadtest/http-smoke.py --workers 100 --seconds 30 --urls http://127.0.0.1:8088/api/v1/shows http://127.0.0.1:8089/api/v1/shows`.
 먼저 격리된 두 서버를 구성해야 한다. 도구는 loopback 대상과 최대 200 workers/120초만 허용한다.
 
+브라우저 실연동에서도 환불 처리 중 연결 서버를 SIGKILL하고 재시작했다. STOMP 재연결,
+관객·관리자 화면의 자동 환불 완료와 좌석 반환을 확인했다. 재시작 구간에 모든 실시간 이벤트가
+도착하는 것을 전제하지 않으며 REST 재조회가 최종 상태를 복구한다.
+
+추가 보안 알림: 개발 의존성 `braces <=3.0.3`의 High 경고가 열려 있다.
+[공식 advisory](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)에 수정 버전이 없으며,
+ESLint 전이 의존성이다. production 의존성 audit는 통과했지만 개발 의존성 경고를 해결됨으로 처리하지 않았다.
+
 ## 16. 현재 경계와 후속 의사결정
 
 | 항목 | 현재 상태 / 완료 조건 |
@@ -480,3 +488,11 @@ node --test store.test.js
 6. 운영은 `scripts/public-demo.py`, `demo-backup.py`, `demo-remote-backup.py`.
 
 참고: [아키텍처](ARCHITECTURE.md), [백엔드 가이드](../backend/README.md), [프론트 가이드](../frontend/README.md), [공개 데모 운영](../infra/public-demo/README.md), [보안 범위](../SECURITY.md), [의존성 감사](security-audit.md), [컨테이너 감사](container-security-audit.md), [기술 결정 ADR](adr/).
+
+
+## 18. 이번 배포 기록
+
+2026-10-16 코드 커밋 `d8fab65`를 백엔드와 Vercel production에 반영했다.
+공개 미러에도 소스 스냅샷을 반영했으며 비공개 Git 이력·환경 파일·운영 키·백업은 복사하지 않았다.
+공개 `/api/health`는 `{"status":"ok"}`를 반환했다. 세부 CI·외부 감시 결과는
+[운영 검증 보고서](qa/2026-10-16-operations-verification.md)를 참고한다.
