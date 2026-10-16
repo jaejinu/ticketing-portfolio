@@ -1,0 +1,25 @@
+{
+  "scope": "isolated localhost, two JVMs, Mock PG, ten concurrent journeys; not production capacity or HA",
+  "buyers": 20,
+  "completedJourneys": 20,
+  "elapsedSeconds": 0.577,
+  "journeyPerSecond": 34.649,
+  "measuredHttpRequests": 120,
+  "allHttpSuccessful": true,
+  "httpLatencyMs": {
+    "p50": 31.96,
+    "p95": 131.59,
+    "p99": 164.95
+  },
+  "duplicatePaymentRetries": 20,
+  "duplicateRefundRetries": 20,
+  "seatsReturned": 20,
+  "approvedAmount": 1600000,
+  "refundedAmount": 1600000,
+  "dbPayments": 20,
+  "dbRefunded": 20,
+  "refundOutboxEvents": 20,
+  "mockPgCancelled": 20,
+  "rateLimitNote": "Only per-IP capacities raised to 2000 for shared-loopback injector; per-user limits and queue admission remain enabled",
+  "database": "disposable PostgreSQL 15; not TimescaleDB performance measurement"
+}

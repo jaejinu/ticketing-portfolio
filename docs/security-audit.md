@@ -1,5 +1,10 @@
 # 공개 준비 보안 점검 — 2026-10-05
 
+2026-10-16 후속: 개발 의존성 `braces@3.0.3`의 과도한 중첩 재귀에 대해 로컬 pnpm 패치와
+15개 공격 입력 CI 검사를 추가했다. 공식 수정 버전 적용으로 간주하지 않고 경고를 유지한다.
+production audit는 0건이었다. [검증 보고서](qa/2026-10-16-local-hardening.md)와
+[패치 범위·제거 조건](../frontend/patches/README.md)을 참고한다. 아래 수치는 각 기록 시점의 결과다.
+
 ## 의존성 감사
 
 Gradle 각 모듈의 `runtimeClasspath`에서 실제 해석된 Maven 좌표를 추출하고

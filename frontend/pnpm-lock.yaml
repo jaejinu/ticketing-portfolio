@@ -7,6 +7,11 @@ settings:
 overrides:
   source-map-js: '>=1.2.2'
 
+patchedDependencies:
+  braces@3.0.3:
+    hash: ayp4ppcw7wmvlp7lc6vylmvbni
+    path: patches/braces@3.0.3.patch
+
 importers:
 
   .:
@@ -3182,7 +3187,7 @@ snapshots:
     dependencies:
       balanced-match: 4.0.4
 
-  braces@3.0.3:
+  braces@3.0.3(patch_hash=ayp4ppcw7wmvlp7lc6vylmvbni):
     dependencies:
       fill-range: 7.1.1
 
@@ -4037,7 +4042,7 @@ snapshots:
 
   micromatch@4.0.8:
     dependencies:
-      braces: 3.0.3
+      braces: 3.0.3(patch_hash=ayp4ppcw7wmvlp7lc6vylmvbni)
       picomatch: 2.3.2
 
   minimatch@10.2.6:

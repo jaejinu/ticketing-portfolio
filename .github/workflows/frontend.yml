@@ -50,6 +50,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Audit production dependencies
         run: pnpm audit --prod --audit-level=high
+      - name: Check braces depth mitigation
+        run: node scripts/check-braces-guard.mjs
       - name: Lint
         run: pnpm lint
       - name: Build production app and route types

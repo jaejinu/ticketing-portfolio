@@ -1,5 +1,34 @@
 # loadtest — 부하 / 봇 테스트
 
+## 재실행 가능한 격리 결제·환불 검증
+
+`isolated-transactions.py`는 임시 PostgreSQL/Redis/Kafka, Mock PG와 두 JVM을 만들고
+`transaction-smoke.cjs`로 가입 → 로그인 → 실제 대기열 입장 → 좌석 점유 → 결제 →
+다른 서버에서 동일 키 재결제 → 환불 견적 → 직접 환불 → 중복 환불을 검증한다.
+기본 구매자 20명, 동시 여정 최대 10개, 구매자 수 허용 범위 2~50이다.
+
+```bash
+JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home backend/gradlew -p backend :app-gateway:bootJar
+PATH=/opt/homebrew/opt/node@24/bin:$PATH python3 loadtest/isolated-transactions.py --users 20 --result /tmp/ticketing-transaction-drill.json
+```
+
+Java 21, Node 24, Python 3, Docker, OpenSSL과 로컬에 캐시된 `postgres:15-alpine`,
+`redis:7.4.11-alpine`, `apache/kafka:4.3.1` 이미지가 필요하다. 이미지 자동 다운로드는 하지 않는다.
+사용 포트는 loopback의 15440/16390/29092/18087/8088/8089이며 하나라도 사용 중이면 시작하지 않는다.
+기존 데모 DB·PG 데이터·컨테이너를 재사용하지 않고 생성한 프로세스/컨테이너만 종료한다.
+정상 종료와 예외 모두 정리하며, 강제 종료(SIGKILL) 시에는 자동 정리가 보장되지 않는다.
+
+HTTP 성공만으로 통과시키지 않는다. 결제 ID의 멱등성, 환불액, 좌석 반환,
+DB 결제·환불 건수/금액, 환불 Outbox 수, Mock PG의 CANCELLED 건수를 대조한다.
+가입·대기열 준비와 최종 대조는 처리량/지연 측정에서 제외한다. 결과 JSON은 식별자나 토큰 없이
+집계 수치만 보관한다. 실패 로그는 결과 파일 옆 `<파일명>-failure-logs` 디렉터리에 남긴다.
+
+단일 loopback 부하 생성기의 IP 제한만 2000으로 높인다. 사용자별 제한과 실제 대기열 입장은 유지한다.
+환불 외부 발송 worker는 비활성화한다. 동일 Mac의 두 JVM/일반 PostgreSQL/Mock PG 결과이며
+실제 PG, TimescaleDB 성능, 인터넷 응답시간, 운영 HA 또는 최대 수용량을 증명하지 않는다.
+
+아래 Gatling/Locust 자료는 별도 시나리오이며 위 검증의 실행 결과와 구분한다.
+
 > "다이나믹 프라이싱 티켓팅" 백엔드의 KPI 6 개를 측정/증명하는 두 가지 도구가 들어있다.
 >
 > - **Gatling** (`./gatling`) — 부하 KPI 5 개 (좌석 중복판매 / 좌석맵 p95 / 결제 p95 / WS 동접 / Consumer lag).
