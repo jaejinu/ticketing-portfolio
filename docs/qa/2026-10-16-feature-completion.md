@@ -36,3 +36,18 @@
 ## 완료로 처리하지 않는 것
 
 실제 PG, 실제 휴대폰 푸시/실기기 Safari, 관리자 암호가 필요한 호스트 방화벽, 복구 키의 사용자 소유 외부 보관, 다중 리전 HA/초대규모 부하 검증은 별도 환경 작업이다. 부분 환불·양도·QR 검표는 이번 요청의 구현 범위에 포함하지 않았다. 판매 중 특정 좌석을 일시 제외하는 기능 대신 판매 전 행 삭제를 제공한다. 알림은 at-least-once이며 제공자 수신 직후 장애 시 중복 가능성이 있다.
+
+## 공개 데모 실연동
+
+- 프론트 `ccaa4ae`, 백엔드 `ef5f1c3` 배포. 최초 프론트 배포 시 백엔드 재기동 중 502를 health gate가 감지해 배포를 중지했고, 기동 후 재시도하여 성공했다.
+- 신규 검증 사용자로 공개 Vercel 화면에서 로그인 → 공연 → 대기열 → 좌석 확보 → Mock PG 결제 → 내 티켓 상세 직접 환불까지 실제 API로 실행.
+- 결제 `ecf42d67-9d51-4ea7-8bf4-c668a2d43029`: 81,600원 전액 환불, 좌석 AVAILABLE 복귀 확인.
+- 해당 결제의 `refund_notifications`: SMTP SENT/attempts 1, FCM SENT/attempts 1. 데모 Mailpit/FCM Mock 대상이며 외부 실제 결제·메일·실기기 푸시는 아니다.
+- 공유 Kafka에서 유입된, 로컬 결제가 없는 잘못된 알림 큐 6행은 격리 수정 후 삭제했다. 실제 로컬 결제의 알림 기록은 유지했다.
+- 배포 전 백업 `snapshot-20261016T020518951447Z`: 17개 테이블/5개 결제 복원 검증 통과. PRIVATE 원격 저장소의 암호화 백업 다운로드·복호화 checksum도 통과.
+- 배포 후 백업 `snapshot-20261016T021142505590Z`: 새 알림 테이블 포함 **18개 테이블/6개 결제** 복원 검증 및 원격 암호화 백업 다운로드·복호화 검증 통과.
+- 공개 데모 health 정상. 알림 큐는 실제 환불의 SMTP/FCM SENT 각 1건이며 로컬 결제가 없는 행은 0건.
+- [Frontend CI](https://github.com/jaejinu/ticketing/actions/runs/38838814528) 성공: lint/build/typecheck/production audit/readiness/browser 검증.
+- [외부 데모 감시](https://github.com/jaejinu/ticketing-portfolio/actions/runs/38839351166) 성공.
+- [Backend CI](https://github.com/jaejinu/ticketing/actions/runs/38839100806) 성공: 전체 테스트·bootJar·런타임 의존성 감사.
+- 공개 미러 [Backend CI](https://github.com/jaejinu/ticketing-portfolio/actions/runs/38839136697), [Frontend CI](https://github.com/jaejinu/ticketing-portfolio/actions/runs/38838887813)도 성공. 소스는 비공개 저장소와 동일한 트리이며 비공개 이력·환경 파일·복구 키는 복사하지 않았다.
