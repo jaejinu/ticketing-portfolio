@@ -335,6 +335,11 @@ pnpm dev
 
 최초 `make up`은 개발 환경 비밀번호를 생성하며 기존 `.env`를 덮어쓰지 않는다. 개발 시드 계정은 README에 안내된 로컬 전용 계정이다. 공개 데모는 별도로 생성한 비밀번호를 사용하며 실제 값은 문서에 싣지 않는다.
 
+이번 Mac에서는 Node 24를 별도로 설치하고 테스트 명령의 PATH만 변경했다. 시스템 기본 Node 링크는 유지했다.
+Homebrew 환경에서는 `PATH=/opt/homebrew/opt/node@24/bin:$PATH pnpm build`처럼 실행할 수 있다.
+JDK도 자동 탐색되지 않으면 `/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`을
+`JAVA_HOME`으로 지정한다. 다른 OS에서는 해당 설치 경로를 사용한다.
+
 주요 설정: `DB_URL`, `DB_USER`, `DB_PASSWORD`, `REDIS_HOST`, `REDIS_PORT`, `KAFKA_BOOTSTRAP`, `MOCK_PG_BASE_URL`, JWT 키 경로, `AUTH_CORS_ORIGINS`, `AUTH_PROXY_SECRET`. 프론트는 `NEXT_PUBLIC_API_BASE`, `NEXT_PUBLIC_WS_BASE`, 서버 전용 `INTERNAL_API_BASE`를 사용한다. `NEXT_PUBLIC_*`는 빌드 시 포함되므로 변경 후 재배포해야 한다.
 
 ## 13. 공개 데모 배포와 장애 확인
@@ -473,6 +478,7 @@ ESLint 전이 의존성이다. production 의존성 audit는 통과했지만 개
 | 호스트 방화벽 | 관리자 암호 필요. 자동 변경 불가; macOS 시스템 설정에서 사용자 조치 필요 |
 | 복구 키 외부 보관 | 키 생성·로컬 0600 저장. 사용자 소유의 안전한 별도 위치에 키 보관 필요 |
 | 운영 가용성 | 단일 Mac·단일 broker·공유 일부 인프라. 실제 HA/멀티존 구성 아님 |
+| 추가 관리 기능 | 잠긴 계정 전용 목록·사용자별 결제 검색·판매 리포트·대리 수정·DRAFT 삭제/공개 취소·좌석 삭제/판매 제외·페이지 나누기·가격 변경 사유·수동 매진·차단 추가/허용 목록은 별도 확장 범위 |
 | 초대규모 부하 | 별도 자원·비용·목표 부하 모델을 정한 검증 필요 |
 | 토큰 유예·가입 존재 응답 | 현행 동작을 명시하고 제품/보안 정책 변경 시 함께 테스트 |
 
