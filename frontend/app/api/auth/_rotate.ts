@@ -13,8 +13,9 @@
  *   이미 회전된 토큰으로 백엔드를 다시 때리는 것을 막는다.
  *
  * 한계(명시):
- *   Next 서버 인스턴스가 여러 개면 프로세스 간 공유는 안 된다 — 그 경우 백엔드에
- *   rotation grace window 를 두는 것이 정석. 본 데모는 단일 인스턴스 전제.
+ *   Next 서버 인스턴스가 여러 개(Vercel 서버리스)면 프로세스 간 공유는 안 된다 — 그 경우는
+ *   백엔드 rotation grace window(기본 3초)가 같은 결과를 멱등 반환해 흡수한다.
+ *   캐시는 "옛 토큰을 들고 온 누구에게나 새 토큰을 주는" 창이기도 하므로 백엔드 유예와 같게 짧게 둔다.
  */
 
 import { BackendAuthTokenSchema } from '@/lib/api/schemas';
@@ -30,7 +31,7 @@ export type RotationOutcome =
     }
   | {
       ok: false;
-      /** 401 계열 = 토큰 무효(쿠키 폐기 대상), 502 = 백엔드 문제(쿠키 유지). */
+      /** 400/401/403 = 토큰 무효(쿠키 폐기 대상), 그 외(5xx·429) = 백엔드 문제(쿠키 유지). */
       status: number;
     };
 
@@ -44,7 +45,12 @@ const recentRotations = new Map<
  * 결과 캐시 TTL. "동시 다발 호출" 을 흡수하면 충분하므로 짧게.
  * 너무 길면 진짜 재사용 공격 감지가 그만큼 늦어진다.
  */
-const TTL_MS = 10_000;
+const TTL_MS = 3_000;
+
+/** 백엔드가 토큰 자체를 거절한 응답인가 — 이때만 쿠키를 지운다. */
+export function isInvalidRefreshStatus(status: number): boolean {
+  return status === 400 || status === 401 || status === 403;
+}
 
 export function rotateRefreshToken(oldToken: string): Promise<RotationOutcome> {
   const now = Date.now();

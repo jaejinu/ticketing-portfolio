@@ -1,5 +1,7 @@
 package com.ticketing.show.api;
 
+import com.ticketing.auth.audit.AuditRecorder;
+
 import com.ticketing.auth.security.AuthPrincipal;
 import com.ticketing.auth.security.AuthenticatedUser;
 import com.ticketing.show.api.dto.CreateShowRequest;
@@ -42,8 +44,12 @@ public class OrganizerShowController {
 
     private final ShowCommandService commandService;
     private final ShowQueryService queryService;
+    /** 조직자 상태 변경 기록 — 누가 언제 공개·종료·판매 오픈·가격 변경했는지 (QA P1-5). */
+    private final AuditRecorder audit;
 
-    public OrganizerShowController(ShowCommandService commandService, ShowQueryService queryService) {
+    public OrganizerShowController(ShowCommandService commandService, ShowQueryService queryService,
+                                   AuditRecorder audit) {
+        this.audit = audit;
         this.commandService = commandService;
         this.queryService = queryService;
     }
@@ -62,6 +68,7 @@ public class OrganizerShowController {
                                                 @Valid @RequestBody UpdateShowRequest req) {
         Show show = commandService.updateMeta(me.userId(), showId,
                 req.title(), req.venue(), req.description(), req.posterUrl());
+        audit.record(me.userId(), "SHOW_UPDATED", "SHOW", showId, Map.of("title", show.getTitle(), "venue", show.getVenue()));
         return ResponseEntity.ok(ShowResponse.summary(show, List.of()));
     }
 
@@ -69,6 +76,7 @@ public class OrganizerShowController {
     public ResponseEntity<Map<String, String>> publish(@AuthenticatedUser AuthPrincipal me,
                                                         @PathVariable UUID showId) {
         Show show = commandService.publish(me.userId(), showId);
+        audit.record(me.userId(), "SHOW_PUBLISHED", "SHOW", showId, Map.of());
         return ResponseEntity.ok(Map.of("status", show.getStatus().name()));
     }
 
@@ -76,6 +84,7 @@ public class OrganizerShowController {
     public ResponseEntity<Map<String, String>> close(@AuthenticatedUser AuthPrincipal me,
                                                       @PathVariable UUID showId) {
         Show show = commandService.close(me.userId(), showId);
+        audit.record(me.userId(), "SHOW_CLOSED", "SHOW", showId, Map.of());
         return ResponseEntity.ok(Map.of("status", show.getStatus().name()));
     }
 

@@ -18,7 +18,8 @@ spring:
     # 환경변수 DB_URL 또는 make backend 의 dotenv-load 로 override 가능.
     url:      ${DB_URL:jdbc:postgresql://localhost:5440/ticketing}
     username: ${DB_USER:ticket}
-    password: ${DB_PASSWORD:ticket}
+    # DB_PASSWORD 가 없으면 infra/.env 의 POSTGRES_PASSWORD(make backend 가 export) — 둘 다 없을 때만 예전 값.
+    password: ${DB_PASSWORD:${POSTGRES_PASSWORD:ticket}}
     driver-class-name: org.postgresql.Driver
     hikari:
       data-source-properties:
@@ -34,6 +35,8 @@ spring:
       # infra/docker-compose.yml 이 host port 6390 으로 노출 (REDIS_PORT=6390).
       # 6379 가 다른 dev Redis 컨테이너에 점유돼 6390 으로 우회.
       port: ${REDIS_PORT:6390}
+      # 비밀번호는 여기 두지 않는다 — 빈 문자열이어도 Redisson 이 AUTH 를 보내 비밀번호 없는 Redis 에서
+      # 실패한다. infra/.env 에 REDIS_PASSWORD 가 있으면 make backend 가 SPRING_DATA_REDIS_PASSWORD 로 넘긴다.
 
   # JavaMailSender 자동 등록 — SmtpAlertSender (module-alert) 가 의존.
   # docker-compose 의 Mailpit (port 1025) 가 SMTP 수신 + http://localhost:8025 UI 노출.
@@ -82,6 +85,15 @@ app:
       fail-threshold: 5                                  # 5회 실패 → 잠금 (spec)
       fail-window:    PT10M                              # 10분 내 5회 — 의도적 brute-force 와 우발적 실수 분리
       duration:       PT5M                               # 5분간 잠금 (spec)
+      # 위 세 값은 (계정, IP) 단위. 남이 내 계정을 잠가도 내 IP 에서는 로그인된다.
+      # 아래는 여러 IP 를 합친 계정 전체 상한 — IP 를 바꿔 가며 하는 분산 대입 방어.
+      account-fail-threshold: 30
+      account-fail-window:    PT30M
+      account-duration:       PT15M
+    # 인증 프록시(Vercel Next 서버)가 방문자 IP 를 X-Client-Ip 로 넘길 때 함께 보내는 공유 비밀.
+    # 비어 있으면 X-Client-Ip 는 무시된다. 공개 데모는 Vercel 과 백엔드 양쪽에 같은 값을 둔다.
+    proxy:
+      secret: ${AUTH_PROXY_SECRET:}
     bcrypt:
       strength: 12                                       # OWASP 권장 균형점
     cors:
@@ -142,6 +154,10 @@ app:
       ttl:        ${SEAT_HOLD_TTL:PT5M}
       lock-wait:  ${SEAT_HOLD_LOCK_WAIT:PT0.2S}
       max-seats:  ${SEAT_HOLD_MAX_SEATS:4}
+      # 한 회차에서 1인이 가질 수 있는 좌석 합계(살아 있는 점유 + 구매). 요청을 나눠 한도를 넘는 것을 막는다.
+      max-seats-per-user: ${SEAT_HOLD_MAX_SEATS_PER_USER:4}
+      # 좌석 점유 전 대기열 입장 확인. 대기열을 거치지 않는 부하 테스트(SeatHoldSimulation)만 false 로 끈다.
+      require-queue-admission: ${SEAT_HOLD_REQUIRE_QUEUE_ADMISSION:true}
       # Phase 2: TTL 만료 스케줄러
       #   - scan-interval 1초 = 만료 후 다른 사용자가 거의 즉시 점유 가능한 체감.
       #   - batch-size 100 = 한 사이클이 너무 오래 끌지 않도록 상한 (한 회차 좌석 폭주 대비).
@@ -180,6 +196,17 @@ app:
       per-user:
         capacity:      ${QUEUE_RATELIMIT_USER_CAP:120}
         refill-period: ${QUEUE_RATELIMIT_USER_PERIOD:PT1M}
+      # 좌석 점유·결제 생성(POST) 전용 버킷 — 대기열 버킷과 별도. enabled 는 위 값을 같이 따른다.
+      purchase-per-ip:
+        capacity:      ${PURCHASE_RATELIMIT_IP_CAP:30}
+        refill-period: ${PURCHASE_RATELIMIT_IP_PERIOD:PT1M}
+      purchase-per-user:
+        capacity:      ${PURCHASE_RATELIMIT_USER_CAP:10}
+        refill-period: ${PURCHASE_RATELIMIT_USER_PERIOD:PT1M}
+      # 로그인·가입(POST) 전용 IP 버킷.
+      auth-per-ip:
+        capacity:      ${AUTH_RATELIMIT_IP_CAP:20}
+        refill-period: ${AUTH_RATELIMIT_IP_PERIOD:PT1M}
     # -------------------------------------------------------------------------
     # Phase 6c: 매크로 탐지 점수 모델
     # -------------------------------------------------------------------------
@@ -220,11 +247,13 @@ app:
   # 왜 이 수치인지:
   #   - dedup-ttl 5분: outbox publisher max-retries 윈도우 일부를 커버 + 메모리 보호 균형.
   #   - dedup-max-size 10만: 분당 약 333 eps 가 5분 안에 누적되는 정도.
-  #   - consumer-group "ws-bridge": 다중 인스턴스 시 같은 그룹이 partition 분담.
+  #   - consumer-group "ws-bridge": 실제 그룹은 "ws-bridge-{instance-id}" — 인스턴스마다 모든 이벤트를
+  #     받아 자기 접속자에게 보낸다(메모리 STOMP 브로커). instance-id 를 비우면 호스트 이름.
   ws-bridge:
     dedup-ttl:      ${WS_BRIDGE_DEDUP_TTL:PT5M}
     dedup-max-size: ${WS_BRIDGE_DEDUP_MAX:100000}
     consumer-group: ${WS_BRIDGE_GROUP:ws-bridge}
+    instance-id:    ${WS_BRIDGE_INSTANCE_ID:}
 
   # ---------------------------------------------------------------------------
   # Phase 3a: 공용 Transactional Outbox (seat / payment / alert 가 함께 사용)
@@ -251,7 +280,17 @@ app:
   #   - organizer-password-hash 는 데모 organizer 의 BCrypt(strength=12) 해시.
   #     평문은 'Demo1234!' — 로컬 데모용. 운영 환경에선 절대 사용 금지(prod 프로파일에 노출 안 함).
   #   - enabled=false 로 두면 시드 전체가 스킵되어 빈 DB 로 부팅 가능 (수동 등록 시연 시).
+  # 백엔드 로그 → OTLP(collector → Loki). OtlpLogExportConfig. 트레이스·메트릭은 Micrometer 가 보낸다.
+  telemetry:
+    logs:
+      enabled: ${TELEMETRY_LOGS_ENABLED:true}
+    environment: ${DEPLOYMENT_ENVIRONMENT:local}
+
   show:
+    # 공연 시작 시각이 지난 회차를 닫는다(판매·대기열 중단). 테스트 컨텍스트에는 이 파일이 없어 꺼져 있다.
+    auto-close:
+      enabled: ${SHOW_AUTO_CLOSE_ENABLED:true}
+      interval: PT5M
     seed:
       enabled: ${SHOW_SEED_ENABLED:true}
       # 데모 옵션 — 시드 회차를 곧장 ON_SALE 로 전환.

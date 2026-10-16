@@ -23,11 +23,11 @@ dependencies {
     // STOMP CONNECT JWT 검증 — JwtTokenVerifier 직접 사용.
     implementation(project(":module-auth"))
 
-    implementation(libs.spring.boot.starter.web)
+    implementation(libs.spring.boot.starter.webmvc)
     implementation(libs.spring.boot.starter.websocket)
     implementation(libs.spring.boot.starter.security)
 
-    implementation(libs.spring.kafka)
+    implementation(libs.spring.boot.starter.kafka)
     implementation(libs.caffeine)
     implementation("io.micrometer:micrometer-core")
 }

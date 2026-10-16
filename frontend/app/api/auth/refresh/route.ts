@@ -20,7 +20,7 @@ import {
   setRefreshCookie,
 } from '@/lib/auth/cookies';
 import { jsonError } from '../_backend';
-import { rotateRefreshToken } from '../_rotate';
+import { isInvalidRefreshStatus, rotateRefreshToken } from '../_rotate';
 
 export const runtime = 'nodejs';
 
@@ -36,8 +36,9 @@ export async function POST(): Promise<NextResponse> {
   const outcome = await rotateRefreshToken(refreshToken);
 
   if (!outcome.ok) {
-    if (outcome.status === 502) {
-      // 네트워크/백엔드 문제 — 쿠키를 지우지 않는다. 다음 시도에서 다시.
+    if (!isInvalidRefreshStatus(outcome.status)) {
+      // 네트워크/백엔드 문제(5xx·429 포함) — 쿠키를 지우지 않는다. 다음 시도에서 다시.
+      // 예전엔 502 만 예외라 백엔드 500/503/429 한 번에 사용자가 로그아웃됐다.
       return jsonError(502, 'BACKEND_UNREACHABLE');
     }
     // INVALID_REFRESH 또는 REFRESH_REUSE_DETECTED → 쿠키 즉시 폐기.

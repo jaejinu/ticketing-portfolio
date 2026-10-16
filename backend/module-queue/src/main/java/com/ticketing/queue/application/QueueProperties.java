@@ -86,6 +86,17 @@ public class QueueProperties {
         private boolean enabled = true;
         private Bucket perIp = new Bucket(60, Duration.ofMinutes(1));
         private Bucket perUser = new Bucket(120, Duration.ofMinutes(1));
+        /**
+         * 좌석 점유·결제 생성(POST) 전용 버킷. 대기열 상태 폴링과 섞이지 않게 키 공간을 나누고 더 빡빡하게 둔다.
+         * 사람은 충돌 재시도를 포함해도 분당 몇 번이면 충분하다.
+         */
+        private Bucket purchasePerIp = new Bucket(30, Duration.ofMinutes(1));
+        private Bucket purchasePerUser = new Bucket(10, Duration.ofMinutes(1));
+        /**
+         * 로그인·가입(POST) 전용 IP 버킷. 비밀번호 대입·가입 남용을 IP 단위로 늦춘다.
+         * 공개 데모는 인증 프록시가 방문자 IP 를 넘겨야 의미가 있다 (ClientIpResolver).
+         */
+        private Bucket authPerIp = new Bucket(20, Duration.ofMinutes(1));
 
         public boolean isEnabled() { return enabled; }
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
@@ -95,6 +106,15 @@ public class QueueProperties {
 
         public Bucket getPerUser() { return perUser; }
         public void setPerUser(Bucket perUser) { this.perUser = perUser; }
+
+        public Bucket getPurchasePerIp() { return purchasePerIp; }
+        public void setPurchasePerIp(Bucket purchasePerIp) { this.purchasePerIp = purchasePerIp; }
+
+        public Bucket getPurchasePerUser() { return purchasePerUser; }
+
+        public Bucket getAuthPerIp() { return authPerIp; }
+        public void setAuthPerIp(Bucket authPerIp) { this.authPerIp = authPerIp; }
+        public void setPurchasePerUser(Bucket purchasePerUser) { this.purchasePerUser = purchasePerUser; }
     }
 
     /**

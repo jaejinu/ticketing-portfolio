@@ -127,6 +127,15 @@ public class Seat {
         this.status = SeatStatus.AVAILABLE;
     }
 
+    /** SOLD → AVAILABLE. 환불로 표를 되돌릴 때만 쓴다 (결제 saga 의 환불 경로). */
+    public void returnToSale() {
+        if (!SeatStatus.SOLD.equals(this.status)) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST,
+                    "판매된 좌석만 되돌릴 수 있습니다. seatId=" + id + ", status=" + status);
+        }
+        this.status = SeatStatus.AVAILABLE;
+    }
+
     // ---- getters -------------------------------------------------------------
 
     public UUID getId() { return id; }

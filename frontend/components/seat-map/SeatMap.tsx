@@ -56,7 +56,9 @@ export function SeatMap({ showId, scheduleId }: SeatMapProps) {
   const requesting = useRef(false);
   // A snapshot may have been read before an event received while it was in flight.
   const liveRevision = useRef(0);
-  const liveSeats = useRef(new Map<string, { revision: number; status: SeatStatus }>());
+  const liveSeats = useRef(
+    new Map<string, { revision: number; status: SeatStatus; occurredAt?: number }>(),
+  );
   function setHoldMsg(message: string | null) {
     setSelection((prev) => ({ ...prev, message }));
   }
@@ -133,9 +135,21 @@ export function SeatMap({ showId, scheduleId }: SeatMapProps) {
             ? "AVAILABLE"
             : "SOLD";
 
+      // 점유·해제·판매는 서로 다른 Kafka 토픽이라 도착 순서가 뒤바뀔 수 있다 — 같은 좌석에 이미 더
+      // 나중에 일어난 이벤트를 적용했다면 늦게 온 옛 이벤트는 버린다 (QA P3).
+      const occurredAt = Date.parse(fanout.occurredAt);
+      const seatIds = fanout.seatIds.filter((id) => {
+        const last = liveSeats.current.get(id)?.occurredAt;
+        return !(Number.isFinite(occurredAt) && last !== undefined && occurredAt < last);
+      });
+      if (seatIds.length === 0) return;
       const revision = ++liveRevision.current;
-      for (const id of fanout.seatIds) {
-        liveSeats.current.set(id, { revision, status: nextStatus });
+      for (const id of seatIds) {
+        liveSeats.current.set(id, {
+          revision,
+          status: nextStatus,
+          occurredAt: Number.isFinite(occurredAt) ? occurredAt : undefined,
+        });
       }
 
       const previous = queryClient.getQueryData<SeatSnapshot[]>([
@@ -144,7 +158,7 @@ export function SeatMap({ showId, scheduleId }: SeatMapProps) {
         scheduleId,
       ]);
       if (previous) {
-        const target = new Set(fanout.seatIds);
+        const target = new Set(seatIds);
         const next = previous.map((seat) =>
           target.has(seat.id) ? { ...seat, status: nextStatus } : seat,
         );
@@ -185,7 +199,13 @@ export function SeatMap({ showId, scheduleId }: SeatMapProps) {
           ? "다른 관객이 먼저 좌석을 확보했어요. 갱신된 좌석에서 다시 선택해 주세요."
           : code === "QUEUE_REJECTED"
             ? "입장 시간이 끝났어요. 대기열에서 다시 입장해 주세요."
-            : "좌석 확보 결과를 확인하지 못했어요. 연결을 확인하고 좌석 상태를 새로고침해 주세요.",
+            : code === "SEAT_LIMIT_EXCEEDED"
+              ? "이 회차는 한 사람당 4석까지 예매할 수 있어요. 이미 확보했거나 구매한 좌석을 확인해 주세요."
+              : code === "SALES_NOT_OPEN"
+                ? "지금은 이 회차를 판매하지 않아요. 판매 시작 시간을 확인해 주세요."
+                : code === "RATE_LIMIT_EXCEEDED"
+                  ? "요청이 너무 잦아요. 잠시 뒤 다시 시도해 주세요."
+                  : "좌석 확보 결과를 확인하지 못했어요. 연결을 확인하고 좌석 상태를 새로고침해 주세요.",
       );
     },
     onSettled: () => {

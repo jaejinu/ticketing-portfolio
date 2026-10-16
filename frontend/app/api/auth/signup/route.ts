@@ -13,7 +13,7 @@ import {
   SignupRequestSchema,
   SignupResponseSchema,
 } from '@/lib/api/schemas';
-import { callBackend, jsonError, passthroughError } from '../_backend';
+import { callBackend, clientIpOf, jsonError, passthroughError } from '../_backend';
 
 export const runtime = 'nodejs';
 
@@ -37,6 +37,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     backendRes = await callBackend('/auth/signup', {
       method: 'POST',
       json: parsed.data,
+      clientIp: clientIpOf(req),
     });
   } catch {
     return jsonError(502, 'BACKEND_UNREACHABLE');

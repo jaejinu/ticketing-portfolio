@@ -1,6 +1,7 @@
 package com.ticketing.wsbridge;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
@@ -14,4 +15,10 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 @EnableConfigurationProperties(WsBridgeProperties.class)
 public class WsBridgeModuleConfig {
+
+    /** 리스너의 {@code groupId = "#{@wsBridgeGroupId}"} — 인스턴스별 consumer group. */
+    @Bean
+    public String wsBridgeGroupId(WsBridgeProperties props) {
+        return props.groupId();
+    }
 }

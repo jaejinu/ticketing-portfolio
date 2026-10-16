@@ -10,6 +10,7 @@ import com.ticketing.seat.domain.SeatHoldRepository;
 import com.ticketing.seat.domain.SeatHoldStatus;
 import com.ticketing.seat.lock.RedissonSeatLockManager;
 import com.ticketing.show.domain.Seat;
+import com.ticketing.show.domain.ShowScheduleStatus;
 import com.ticketing.show.domain.SeatRepository;
 import com.ticketing.show.domain.SeatStatus;
 import com.ticketing.show.domain.Section;
@@ -76,6 +77,25 @@ class SeatHoldConcurrencyIntegrationTest extends SeatIntegrationTestBase {
     private UUID holderA;
     private UUID holderB;
 
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
+
+    @Test
+    void commitFailureAfterHoldReturnsReleasesRedisLocks() {
+        var tx = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+        assertThatThrownBy(() -> tx.executeWithoutResult(status -> {
+            seatHoldService.hold(scheduleId, holderA, List.of(seatIds.get(0)));
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override public void beforeCommit(boolean readOnly) {
+                            throw new IllegalStateException("injected final commit failure");
+                        }
+                    });
+        })).hasMessageContaining("injected final commit failure");
+        assertThat(seatRepository.findById(seatIds.get(0)).orElseThrow().getStatus()).isEqualTo(SeatStatus.AVAILABLE);
+        assertThat(redissonClient.getLock(RedissonSeatLockManager.LOCK_KEY_PREFIX + seatIds.get(0)).isLocked()).isFalse();
+        assertThat(seatHoldService.hold(scheduleId, holderB, List.of(seatIds.get(0))).getId()).isNotNull();
+    }
+
     @BeforeEach
     void cleanAndSeed() {
         // ---- 1) FK 역순으로 깨끗이 정리 ----------------------------------------
@@ -110,8 +130,9 @@ class SeatHoldConcurrencyIntegrationTest extends SeatIntegrationTestBase {
         showRepository.save(show);
 
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-        ShowSchedule schedule = ShowSchedule.create(show.getId(),
-                now.plusDays(7), now.plusDays(7).plusHours(2), now.plusDays(3));
+        // 점유는 판매 중(ON_SALE, 판매 시작 경과) 회차에서만 허용된다.
+        ShowSchedule schedule = ShowSchedule.createWithId(UUID.randomUUID(), show.getId(),
+                now.plusDays(7), now.plusDays(7).plusHours(2), now.minusDays(1), ShowScheduleStatus.ON_SALE);
         scheduleRepository.save(schedule);
         this.scheduleId = schedule.getId();
 

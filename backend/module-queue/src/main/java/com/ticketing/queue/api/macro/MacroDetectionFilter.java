@@ -1,6 +1,7 @@
 package com.ticketing.queue.api.macro;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
+import com.ticketing.common.error.ApiErrorBody;
 import com.ticketing.common.error.ErrorCode;
 import com.ticketing.queue.api.scope.RequestScope;
 import com.ticketing.queue.application.QueueProperties;
@@ -18,7 +19,6 @@ import org.springframework.util.AntPathMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -41,8 +41,7 @@ import java.util.Map;
  *
  * <h2>사용자 응답 모호화</h2>
  * <p>
- *   {@link com.ticketing.queue.error.QueueErrorAdvice} 주석의 지침("사용자에게 노출 시 사유 모호화 권장") 을
- *   따라 body 에는 봇 점수/증거를 <b>노출하지 않는다</b> — 매크로 제작자가 우회 학습에 활용하는 걸 막기 위함.
+ *   body 에는 봇 점수/증거를 <b>노출하지 않는다</b> — 매크로 제작자가 우회 학습에 활용하는 걸 막기 위함.
  *   운영자는 서버 로그(INFO)에서 상세 확인.
  * </p>
  */
@@ -70,7 +69,7 @@ public class MacroDetectionFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         if (!props.isEnabled()) return true;
-        return !pathMatcher.match(PATH_PATTERN, request.getRequestURI());
+        return !pathMatcher.match(PATH_PATTERN, request.getRequestURI()) && !isPurchase(request);
     }
 
     @Override
@@ -88,6 +87,12 @@ public class MacroDetectionFilter extends OncePerRequestFilter {
             return;
         }
 
+        // Purchase attempts enforce an existing block without mixing their cadence into
+        // queue polling detection. Reading results and releasing holds remain available.
+        if (isPurchase(request)) {
+            chain.doFilter(request, response);
+            return;
+        }
         String ua = request.getHeader(HttpHeaders.USER_AGENT);
         MacroDetectionService.Decision decision = service.recordAndEvaluate(scope, key, ua);
         if (decision.blocked()) {
@@ -95,6 +100,11 @@ public class MacroDetectionFilter extends OncePerRequestFilter {
             return;
         }
         chain.doFilter(request, response);
+    }
+
+    private boolean isPurchase(HttpServletRequest request) {
+        return "POST".equals(request.getMethod())
+                && com.ticketing.queue.api.ratelimit.RateLimitFilter.PURCHASE_PATHS.contains(request.getRequestURI());
     }
 
     /**
@@ -110,9 +120,7 @@ public class MacroDetectionFilter extends OncePerRequestFilter {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");
 
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("code", ErrorCode.MACRO_DETECTED.name());
-        body.put("message", ErrorCode.MACRO_DETECTED.defaultMessage());
+        Map<String, Object> body = ApiErrorBody.of(ErrorCode.MACRO_DETECTED);
         // scope / botScore / 증거는 의도적으로 노출하지 않음 — 봇 우회 학습 방지.
 
         response.getWriter().write(objectMapper.writeValueAsString(body));

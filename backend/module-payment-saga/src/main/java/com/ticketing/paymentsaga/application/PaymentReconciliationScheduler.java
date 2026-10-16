@@ -10,11 +10,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class PaymentReconciliationScheduler {
     private final PaymentSagaService service;
     private final TaskExecutor executor;
+    private final PaymentRefundService refunds;
     private final AtomicBoolean running = new AtomicBoolean();
 
-    public PaymentReconciliationScheduler(PaymentSagaService service,
+    public PaymentReconciliationScheduler(PaymentSagaService service, PaymentRefundService refunds,
             @Qualifier("paymentRecoveryExecutor") TaskExecutor executor) {
         this.service = service;
+        this.refunds = refunds;
         this.executor = executor;
     }
 
@@ -23,7 +25,10 @@ public class PaymentReconciliationScheduler {
         if (!running.compareAndSet(false, true)) return;
         try {
             executor.execute(() -> {
-                try { service.reconcileDue(); }
+                try {
+                    try { service.reconcileDue(); }
+                    finally { refunds.reconcileDue(); }
+                }
                 finally { running.set(false); }
             });
         } catch (RuntimeException ex) {

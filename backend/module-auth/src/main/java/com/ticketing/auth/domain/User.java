@@ -146,6 +146,32 @@ public class User {
         return false;
     }
 
+    /** 부여할 수 있는 역할. 그 밖의 문자열(오타·SUPERGOD·5,000자 등)은 거절한다 (2026-10-13 QA). */
+    public static final java.util.Set<String> ASSIGNABLE_ROLES = java.util.Set.of("USER", "ORGANIZER", "ADMIN");
+
+    /** 역할 부여 — 이미 있으면 그대로. */
+    public void grantRole(String role) {
+        requireAssignable(role);
+        java.util.LinkedHashSet<String> next = new java.util.LinkedHashSet<>(getRoles());
+        next.add(role);
+        this.roles = next.toArray(new String[0]);
+    }
+
+    /** 역할 회수 — 없으면 그대로. */
+    public void revokeRole(String role) {
+        requireAssignable(role);
+        java.util.LinkedHashSet<String> next = new java.util.LinkedHashSet<>(getRoles());
+        next.remove(role);
+        this.roles = next.toArray(new String[0]);
+    }
+
+    private static void requireAssignable(String role) {
+        if (!ASSIGNABLE_ROLES.contains(role)) {
+            throw new com.ticketing.common.error.BusinessException(com.ticketing.common.error.ErrorCode.INVALID_REQUEST,
+                    "알 수 없는 역할입니다. 허용=" + ASSIGNABLE_ROLES + ", 입력=" + role);
+        }
+    }
+
     /** 운영자 unlock — 잠금 즉시 해제. */
     public void unlock() {
         this.status = UserStatus.ACTIVE;

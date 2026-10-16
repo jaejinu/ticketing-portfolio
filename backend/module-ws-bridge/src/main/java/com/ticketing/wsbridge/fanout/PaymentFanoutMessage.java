@@ -9,7 +9,7 @@ import java.util.UUID;
  * <pre>
  *   destination: /user/queue/payments
  *   {
- *     "type":     "PAYMENT_APPROVED" | "PAYMENT_FAILED",
+ *     "type":     "PAYMENT_APPROVED" | "PAYMENT_FAILED" | "PAYMENT_REFUNDED",
  *     "paymentId": "uuid",
  *     "holdId":    "uuid",
  *     "amount":    240000,

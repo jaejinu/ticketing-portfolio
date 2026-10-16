@@ -29,7 +29,8 @@ public record PaymentDetailResponse(
         String pgTxnId,
         String failCode,
         String failReason,
-        OffsetDateTime createdAt
+        OffsetDateTime createdAt,
+        boolean refundPending
 ) {
 
     /** payment 만으로 채울 수 없는 hold/seat 메타는 빈 값으로. enrich 단계에서 보강. */
@@ -39,7 +40,7 @@ public record PaymentDetailResponse(
                 null, List.of(), List.of(),
                 p.getAmount(), p.getStatus(),
                 p.getPgTxnId(), p.getFailCode(), p.getFailReason(),
-                p.getCreatedAt());
+                p.getCreatedAt(), p.isRefundPending());
     }
 
     public PaymentDetailResponse withHoldEnriched(
@@ -49,6 +50,6 @@ public record PaymentDetailResponse(
         return new PaymentDetailResponse(
                 paymentId, holdId, holderId, scheduleId,
                 showId, seatIds, sectionBreakdown,
-                amount, status, pgTxnId, failCode, failReason, createdAt);
+                amount, status, pgTxnId, failCode, failReason, createdAt, refundPending);
     }
 }

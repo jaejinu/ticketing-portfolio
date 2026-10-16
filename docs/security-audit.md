@@ -29,12 +29,23 @@ OSV에 아직 등록되지 않은 문제, 테스트·Gradle 플러그인 의존�
 
 ## 버전 변경의 근거
 
-- Spring Boot 3.5.16 / Spring Cloud 2025.0.3 / Java 17 유지.
+- **2026-10-13 Spring Boot 4.1.1 / Spring Cloud 2025.1.3 / Java 17 로 상향.**
+  계기: `spring-webmvc` 6.2.19 의 Critical 2건(GHSA-j9f9-w8pj-32f8 SSE 프래그먼트 렌더링,
+  GHSA-pc63-qcmh-9cmg XsltView 경로 제한). 6.2 계열은 6.2.19 가 마지막 공개판이고 수정은
+  Spring Framework 7.0.9+ 에만 있어 Boot 4 이동이 유일한 공개 해결책이었다. 두 기능 모두
+  코드에서 쓰지 않아 실제 노출은 없었지만, 감사 스크립트의 "무예외" 원칙을 지키기 위해 상향.
   [공식 호환 표](https://github.com/spring-cloud/spring-cloud-release/wiki/Supported-Versions)에 따라 조합했습니다.
-- Kafka Streams 3.9.2, Redisson 3.52.0, OTel starter 2.32.0으로 업데이트했습니다.
-- Boot BOM 이후 공개된 패치를 적용하기 위해 Jackson 2.21.7, Netty 4.1.138.Final,
-  Tomcat 10.1.60, PostgreSQL JDBC 42.7.13, Log4j 2.25.5, OTel 1.66.0,
-  LZ4 Java 1.11.4를 명시했습니다. 모든 모듈과 gateway의 자동 BOM import에 동일하게 적용합니다.
+- 함께 올린 것: Gradle 8.14.6(Boot 4 플러그인 최소 요구), Redisson 4.8.0, ShedLock 7.10.1,
+  Testcontainers 2.0.5(모듈·패키지명 변경), Kafka 클라이언트는 Boot BOM(4.2.x) 관리로 전환.
+- Jackson 2 → 3 (`com.fasterxml.jackson.databind` → `tools.jackson.databind`). 어노테이션 패키지는 그대로.
+  우리 코드는 Jackson 3 만 쓰고, Jackson 2 는 JJWT 직렬화 모듈 같은 라이브러리가 끌어올 때만 남는다.
+- Boot 3.5 시절 덮어쓰던 Netty/PostgreSQL JDBC/Log4j 버전은 Boot 4 BOM 이 더 새 라인을 관리하므로 제거.
+  OTel SDK 1.66.0 은 OTel starter 2.32 정합을 위해 유지. LZ4 Java 1.11.4 고정은 그대로 둔다.
+- Boot 4.1.1 BOM 기본값에도 공개 취약점이 있어 같은 라인의 패치판으로 고정했다(`backend/build.gradle.kts`).
+  - Jackson 3.1.5 → 3.1.7, Jackson 2 2.21.5 → 2.21.7 (GHSA-7hhh-6rmp-j9qf, GHSA-wv8q-qhhj-9h54 등 DoS 계열)
+  - Tomcat 11.0.24 → 11.0.27 (GHSA-9xv2-5v5q-p794, GHSA-gcx9-497g-6cp6, GHSA-h3x4-894j-xpx5)
+  - `bomProperty` 와 프로젝트 속성(`extra`) 양쪽에 같은 값을 둔다. spring-boot 플러그인을 쓰는
+    app-gateway 는 프로젝트 속성을 읽기 때문에, 한쪽만 두면 모듈마다 다른 버전이 섞인다.
 - JUnit Platform launcher를 BOM과 정렬해 Gradle 내장 구버전 launcher와의 충돌을 제거했습니다.
 
 BOM 갱신 시 위 명시 버전의 필요성을 다시 검토해야 합니다. OTel 자동 구성을 끄던 smoke test 예외를

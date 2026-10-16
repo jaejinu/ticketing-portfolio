@@ -72,7 +72,9 @@ public class JwtTokenIssuer {
                 .claims(Map.of(
                         "email", email,
                         "name", name == null ? "" : name,
-                        "roles", roles))
+                        "roles", roles,
+                        // 표준 iat 는 초 단위라 같은 초 안의 "무효 표시 전/후" 를 가를 수 없다 — AccessTokenRevocation 용.
+                        AccessTokenRevocation.ISSUED_AT_MS_CLAIM, now.toEpochMilli()))
                 .signWith(keyManager.privateKey(), Jwts.SIG.RS256)
                 .compact();
     }

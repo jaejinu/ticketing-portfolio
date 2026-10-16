@@ -1,5 +1,11 @@
 package com.ticketing.queue.api;
 
+import com.ticketing.auth.audit.AuditRecorder;
+import com.ticketing.auth.security.AuthPrincipal;
+import com.ticketing.auth.security.AuthenticatedUser;
+import com.ticketing.common.error.BusinessException;
+import com.ticketing.common.error.ErrorCode;
+
 import com.ticketing.queue.application.admin.QueueAdminService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -40,9 +46,12 @@ import java.util.List;
 public class AdminQueueController {
 
     private final QueueAdminService adminService;
+    /** 차단 해제를 누가 했는지 — 예전 로그엔 행위자가 없었다 (QA P1-5). */
+    private final AuditRecorder audit;
 
-    public AdminQueueController(QueueAdminService adminService) {
+    public AdminQueueController(QueueAdminService adminService, AuditRecorder audit) {
         this.adminService = adminService;
+        this.audit = audit;
     }
 
     /** 현재 차단 중인 매크로 목록 — 남은 차단 시간 긴 순. */
@@ -62,9 +71,14 @@ public class AdminQueueController {
      */
     @DeleteMapping("/blocks/{scope}/{key}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> unblock(@PathVariable String scope, @PathVariable String key) {
+    public ResponseEntity<Void> unblock(@AuthenticatedUser AuthPrincipal me,
+                                        @PathVariable String scope, @PathVariable String key) {
         boolean existed = adminService.unblockMacro(scope, key);
-        return existed ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
+        if (existed) {
+            audit.record(me.userId(), "QUEUE_UNBLOCKED", "MACRO_BLOCK", scope + ":" + key, java.util.Map.of());
+        }
+        if (!existed) throw new BusinessException(ErrorCode.NOT_FOUND, "이미 만료되었거나 해제된 차단입니다.");
+        return ResponseEntity.noContent().build();
     }
 
     /** ON_SALE 회차별 대기열 현황 — 대기 인원 많은 순. */

@@ -1,6 +1,7 @@
 package com.ticketing.queue.api.ratelimit;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
+import com.ticketing.common.error.ApiErrorBody;
 import com.ticketing.common.error.ErrorCode;
 import com.ticketing.queue.api.scope.RequestScope;
 import com.ticketing.queue.application.QueueProperties;
@@ -19,7 +20,7 @@ import org.springframework.util.AntPathMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -49,11 +50,11 @@ import java.util.Map;
  *   Retry-After: {초}
  *   Content-Type: application/json
  *
- *   { "code": "RATE_LIMIT_EXCEEDED", "message": "...", "retryAfterSeconds": N, "scope": "ip|user" }
+ *   { "code": "RATE_LIMIT_EXCEEDED", "message": "...", "status": 429, "retryAfterSeconds": N, "scope": "ip|user" }
  * </pre>
  *
  * <p>
- *   {@link com.ticketing.queue.error.QueueErrorAdvice} 는 {@code @RestControllerAdvice} 라 이미
+ *   {@link com.ticketing.common.web.ApiErrorAdvice} 는 {@code @RestControllerAdvice} 라 이미
  *   컨트롤러에 진입한 예외만 잡는다. 서블릿 필터에서 던진 예외는 그쪽으로 라우팅되지 않으므로
  *   여기서 직접 응답을 써준다.
  * </p>
@@ -62,18 +63,34 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
 
-    /** 이 필터가 감시할 경로 패턴. Ant 스타일. */
+    /** 대기열 필터가 감시할 경로 패턴. Ant 스타일. */
     public static final String PATH_PATTERN = "/api/v1/queue/**";
+    /** 구매 필터가 감시할 경로 — 좌석 점유 생성, 결제 생성 (POST 만). */
+    public static final List<String> PURCHASE_PATHS = List.of("/api/v1/seat-holds", "/api/v1/payments");
+
+    /** 로그인·가입 필터가 감시할 경로 (POST 만). */
+    public static final List<String> AUTH_PATHS = List.of("/api/v1/auth/login", "/api/v1/auth/signup");
+
+    /** 어느 버킷 묶음을 쓰는지. */
+    public enum Group { QUEUE, PURCHASE, AUTH }
 
     private final AntPathMatcher pathMatcher = new AntPathMatcher();
     private final RateLimitService rateLimitService;
     private final QueueProperties.RateLimit props;
     private final ObjectMapper objectMapper;
     private final RequestScope requestScope;
+    private final Group group;
 
     public RateLimitFilter(RateLimitService rateLimitService,
                            QueueProperties.RateLimit props,
                            ObjectMapper objectMapper, RequestScope requestScope) {
+        this(rateLimitService, props, objectMapper, requestScope, Group.QUEUE);
+    }
+
+    public RateLimitFilter(RateLimitService rateLimitService,
+                           QueueProperties.RateLimit props,
+                           ObjectMapper objectMapper, RequestScope requestScope, Group group) {
+        this.group = group;
         this.rateLimitService = rateLimitService;
         this.props = props;
         this.objectMapper = objectMapper;
@@ -83,6 +100,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         if (!props.isEnabled()) return true;
+        if (group == Group.PURCHASE || group == Group.AUTH) {
+            List<String> paths = group == Group.PURCHASE ? PURCHASE_PATHS : AUTH_PATHS;
+            return !"POST".equals(request.getMethod()) || !paths.contains(request.getRequestURI());
+        }
         return !pathMatcher.match(PATH_PATTERN, request.getRequestURI());
     }
 
@@ -91,8 +112,14 @@ public class RateLimitFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
 
-        RequestScope.Resolved resolved = requestScope.resolve(request);
-        ConsumptionProbe probe = rateLimitService.tryConsume(resolved.scope(), resolved.key());
+        RequestScope.Resolved resolved = group == Group.AUTH
+                ? new RequestScope.Resolved(RequestScope.SCOPE_IP, requestScope.clientIp(request))
+                : requestScope.resolve(request);
+        ConsumptionProbe probe = switch (group) {
+            case PURCHASE -> rateLimitService.tryConsumePurchase(resolved.scope(), resolved.key());
+            case AUTH -> rateLimitService.tryConsumeAuth(resolved.key());
+            case QUEUE -> rateLimitService.tryConsume(resolved.scope(), resolved.key());
+        };
 
         if (probe.isConsumed()) {
             // 남은 토큰 수를 헤더로 노출 — 클라이언트가 자체 백오프에 쓸 수 있음.
@@ -102,8 +129,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
 
         long retryAfterSeconds = Math.max(1L, probe.getNanosToWaitForRefill() / 1_000_000_000L);
-        log.info("rate limit blocked scope={}, key={}, retryAfter={}s",
-                resolved.scope(), resolved.key(), retryAfterSeconds);
+        log.info("rate limit blocked group={}, scope={}, key={}, retryAfter={}s",
+                group, resolved.scope(), resolved.key(), retryAfterSeconds);
         writeTooManyRequests(response, resolved.scope(), retryAfterSeconds);
     }
 
@@ -112,7 +139,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
      *
      * <p>
      *   {@code Retry-After} 는 RFC 7231 표준 헤더. 초 정수 값을 그대로 넣는다.
-     *   body 는 QueueErrorAdvice 가 만드는 다른 응답과 형태를 맞추어 프론트가 한 가지 파서로 처리하게 함.
+     *   body 는 {@link ApiErrorBody} 로 만들어 다른 오류 응답과 모양을 맞춘다 — 프론트가 한 가지 파서로 처리.
      * </p>
      */
     private void writeTooManyRequests(HttpServletResponse response,
@@ -123,9 +150,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         response.setCharacterEncoding("UTF-8");
         response.setHeader(HttpHeaders.RETRY_AFTER, String.valueOf(retryAfterSeconds));
 
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("code", ErrorCode.RATE_LIMIT_EXCEEDED.name());
-        body.put("message", ErrorCode.RATE_LIMIT_EXCEEDED.defaultMessage());
+        Map<String, Object> body = ApiErrorBody.of(ErrorCode.RATE_LIMIT_EXCEEDED);
         body.put("retryAfterSeconds", retryAfterSeconds);
         body.put("scope", scope);
 

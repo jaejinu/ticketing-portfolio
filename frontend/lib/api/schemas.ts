@@ -187,6 +187,7 @@ export const SectionSchema = z.object({
   name: z.string(),
   grade: z.enum(['VIP', 'R', 'S', 'A']),
   basePrice: z.number().nonnegative(),
+  seatCount: z.number().int().nonnegative().optional(),
 });
 export type Section = z.infer<typeof SectionSchema>;
 
@@ -293,6 +294,8 @@ export const SeatHoldSchema = z.object({
   status: SeatHoldStatusSchema,
   expiresAt: z.string(),
   createdAt: z.string(),
+  // 응답을 만든 서버 시각 — 카운트다운이 기기 시계 대신 서버 시계를 따르게 한다.
+  serverTime: z.string().optional(),
 });
 export type SeatHold = z.infer<typeof SeatHoldSchema>;
 
@@ -362,6 +365,7 @@ export const PaymentDetailSchema = z.object({
   sectionBreakdown: z.array(SectionBreakdownItemSchema).optional().default([]),
   amount: z.number().int().nonnegative(),
   status: z.enum(['PENDING', 'APPROVED', 'FAILED', 'REFUNDED']),
+  refundPending: z.boolean().default(false),
   pgTxnId: z.string().nullable().optional(),
   failCode: z.string().nullable().optional(),
   failReason: z.string().nullable().optional(),
@@ -403,6 +407,7 @@ export const PaymentSchema = z.object({
   holderId: z.string(),
   amount: z.number().int().nonnegative(),
   status: PaymentStatusSchema,
+  refundPending: z.boolean().default(false),
   pgTxnId: z.string().nullable().optional(),
   failCode: z.string().nullable().optional(),
   failReason: z.string().nullable().optional(),

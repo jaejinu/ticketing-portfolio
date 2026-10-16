@@ -1,325 +1,149 @@
 /**
- * 이 파일의 책임: 주최자 콘솔 진입점 (`/organizer`).
+ * 이 파일의 책임: 주최자 콘솔 첫 화면 (`/organizer`) — 내 공연 목록과 새 공연 만들기.
  *
- * 본 페이지에서 organizer 가 직접 할 수 있는 일:
- *   - 내 공연 + 회차 목록 한눈에 보기
- *   - 회차 status 전환: SCHEDULED → ON_SALE (open) / 어느 상태든 → CLOSED (close)
- *   - 시연 직전 ON_SALE 토글이 가장 큰 효용 — pricing / queue 스케줄러가 즉시 작동 시작.
- *   - 회차별 "인사이트" 토글 — 수요 인사이트 패널(판매율/수요 압력/가격 추이) 확장.
+ * 공연 하나를 누르면 `/organizer/shows/{showId}` 에서 회차·구역·좌석·판매 상태를 관리한다.
+ * 예전 콘솔은 목록과 회차 오픈/종료만 있어, 새 공연을 만들거나 DRAFT 공연을 공개할 방법이
+ * 화면에 없었다 (2026-10-13 QA F6).
  *
- * ROLE=ORGANIZER 검사는 백엔드 SecurityConfig 가 처리 — 권한 없으면 403.
- * 프론트 가드는 middleware.ts (보호 라우트 prefix) 가 비로그인 차단.
+ * ROLE=ORGANIZER 검사는 백엔드가 한다 — 권한이 없으면 403 안내만 보이고 다시 요청하지 않는다.
  */
 
 'use client';
 
 import { useState } from 'react';
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
-import { DemandInsight } from '@/components/organizer/DemandInsight';
-import { ApiRequestError } from '@/lib/api/client';
-import {
-  closeSchedule,
-  listMyShows,
-  openSchedule,
-} from '@/lib/api/organizer';
-import type { Show, ShowSchedule, ShowScheduleStatus } from '@/lib/api/schemas';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Button } from '@/components/ui/Button';
+import { Field } from '@/components/ui/Field';
+import { Input } from '@/components/ui/Input';
+import { Notice } from '@/components/ui/Notice';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { SHOW_STATUS, errorText, isForbidden, statusOf } from '@/components/backoffice/labels';
+import { createShow, listMyShows } from '@/lib/api/organizer';
 
 export default function OrganizerHomePage() {
-  const queryClient = useQueryClient();
-
-  // 인사이트 패널이 열린 회차 — 한 번에 하나만 (여러 개 열면 폴링/STOMP 구독이 겹쳐 무겁다).
-  const [insightScheduleId, setInsightScheduleId] = useState<string | null>(null);
-
   const showsQuery = useQuery({
     queryKey: ['organizer', 'my-shows'],
     queryFn: listMyShows,
     staleTime: 30_000,
+    retry: (count, error) => !isForbidden(error) && count < 2,
   });
-
-  // open/close 후 my-shows / 공개 shows 캐시 모두 무효화 — 상태 즉시 반영.
-  function invalidateShowCaches() {
-    void queryClient.invalidateQueries({ queryKey: ['organizer', 'my-shows'] });
-    void queryClient.invalidateQueries({ queryKey: ['shows'] });
-    void queryClient.invalidateQueries({ queryKey: ['show'] });
-  }
-
-  const openMutation = useMutation({
-    mutationFn: (scheduleId: string) => openSchedule(scheduleId),
-    onSuccess: invalidateShowCaches,
-  });
-  const closeMutation = useMutation({
-    mutationFn: (scheduleId: string) => closeSchedule(scheduleId),
-    onSuccess: invalidateShowCaches,
-  });
-
-  // 마지막 mutation 에러 — 사용자에게 표시 (open/close 공통).
-  const lastError =
-    openMutation.error ?? closeMutation.error ?? null;
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-10 space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-bold">주최자 콘솔</h1>
-        <p className="text-sm text-[color:var(--color-muted-foreground)]">
-          공연 회차를 판매 오픈/종료할 수 있습니다.
-          ON_SALE 전이 직후 가격 산출과 대기열 admit 가 1초 주기로 시작됩니다.
+    <div className="hybrid-container page-space space-y-8">
+      <header className="space-y-3">
+        <p className="eyebrow">ORGANIZER</p>
+        <h1 className="page-title">주최자 콘솔</h1>
+        <p className="muted">
+          공연을 만들고 회차·구역·좌석을 등록한 뒤 공개하고 판매를 엽니다.
         </p>
       </header>
 
-      {lastError && (
-        <ErrorBanner
-          message={
-            lastError instanceof ApiRequestError
-              ? `${lastError.payload?.code ?? 'ERROR'}: ${
-                  lastError.payload?.message ?? lastError.message
-                }`
-              : '상태 전환 중 알 수 없는 오류가 발생했습니다.'
-          }
-        />
-      )}
-
-      {showsQuery.isLoading && <Box>불러오는 중…</Box>}
-      {showsQuery.isError && (
-        <Box className="text-rose-500">
-          공연을 불러올 수 없습니다. ORGANIZER 권한이 있는지 확인해주세요.
-        </Box>
-      )}
-      {showsQuery.data && showsQuery.data.length === 0 && (
-        <Box>등록된 공연이 없습니다.</Box>
-      )}
-
-      {showsQuery.data && showsQuery.data.length > 0 && (
-        <ul className="space-y-4">
-          {showsQuery.data.map((show) => (
-            <li key={show.id}>
-              <ShowCard
-                show={show}
-                onOpen={(sid) => openMutation.mutate(sid)}
-                onClose={(sid) => closeMutation.mutate(sid)}
-                insightScheduleId={insightScheduleId}
-                onToggleInsight={(sid) =>
-                  setInsightScheduleId((cur) => (cur === sid ? null : sid))
-                }
-                pendingScheduleId={
-                  openMutation.isPending
-                    ? openMutation.variables ?? null
-                    : closeMutation.isPending
-                      ? closeMutation.variables ?? null
-                      : null
-                }
-              />
-            </li>
-          ))}
-        </ul>
+      {isForbidden(showsQuery.error) ? (
+        <Notice tone="error" title="주최자 권한이 필요해요.">
+          관리자에게 주최자 권한을 요청해 주세요.
+        </Notice>
+      ) : (
+        <>
+          <CreateShowCard />
+          <section className="space-y-3" aria-labelledby="my-shows">
+            <h2 id="my-shows" className="text-lg font-semibold">
+              내 공연
+            </h2>
+            {showsQuery.isLoading && <Notice title="공연을 불러오는 중…" />}
+            {showsQuery.isError && (
+              <Notice tone="error" title="공연 목록을 불러오지 못했어요.">
+                {errorText(showsQuery.error)}
+              </Notice>
+            )}
+            {showsQuery.data?.length === 0 && (
+              <Notice title="아직 등록한 공연이 없어요.">위에서 첫 공연을 만들어 보세요.</Notice>
+            )}
+            {showsQuery.data && showsQuery.data.length > 0 && (
+              <ul className="grid gap-3 sm:grid-cols-2">
+                {showsQuery.data.map((show) => {
+                  const status = statusOf(SHOW_STATUS, show.status ?? 'DRAFT');
+                  const schedules = show.schedules ?? [];
+                  return (
+                    <li key={show.id}>
+                      <Link
+                        href={`/organizer/shows/${show.id}`}
+                        className="surface-card block space-y-2 hover:border-[color:var(--color-primary)]"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="font-semibold">{show.title}</p>
+                          <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+                        </div>
+                        <p className="text-sm muted">{show.venue}</p>
+                        <p className="text-sm muted">
+                          회차 {schedules.length}개 · 판매 중{' '}
+                          {schedules.filter((s) => s.status === 'ON_SALE').length}개
+                        </p>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        </>
       )}
     </div>
   );
 }
 
-/* ────────────────────────────────────────────────────────
- * 공연 카드
- * ──────────────────────────────────────────────────────── */
-
-function ShowCard({
-  show,
-  onOpen,
-  onClose,
-  insightScheduleId,
-  onToggleInsight,
-  pendingScheduleId,
-}: {
-  show: Show;
-  onOpen: (scheduleId: string) => void;
-  onClose: (scheduleId: string) => void;
-  insightScheduleId: string | null;
-  onToggleInsight: (scheduleId: string) => void;
-  pendingScheduleId: string | null;
-}) {
-  const schedules = show.schedules ?? [];
-  return (
-    <article className="rounded-[var(--radius-lg)] border border-[color:var(--color-border)] overflow-hidden">
-      <header className="border-b border-[color:var(--color-border)] p-4 space-y-1">
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 className="text-lg font-semibold">{show.title}</h2>
-          <ShowStatusBadge status={show.status ?? 'DRAFT'} />
-        </div>
-        <p className="text-xs text-[color:var(--color-muted-foreground)]">
-          {show.venue}
-        </p>
-      </header>
-
-      <div className="divide-y divide-[color:var(--color-border)]">
-        {schedules.length === 0 ? (
-          <p className="p-4 text-xs text-[color:var(--color-muted-foreground)]">
-            등록된 회차가 없습니다.
-          </p>
-        ) : (
-          schedules.map((s) => (
-            <div key={s.id}>
-              <ScheduleRow
-                schedule={s}
-                onOpen={() => onOpen(s.id)}
-                onClose={() => onClose(s.id)}
-                onToggleInsight={() => onToggleInsight(s.id)}
-                insightOpen={insightScheduleId === s.id}
-                pending={pendingScheduleId === s.id}
-              />
-              {/* 확장 시에만 마운트 — 닫으면 폴링/STOMP 구독도 함께 정리된다. */}
-              {insightScheduleId === s.id && (
-                <DemandInsight showId={show.id} scheduleId={s.id} />
-              )}
-            </div>
-          ))
-        )}
-      </div>
-    </article>
-  );
-}
-
-function ScheduleRow({
-  schedule,
-  onOpen,
-  onClose,
-  onToggleInsight,
-  insightOpen,
-  pending,
-}: {
-  schedule: ShowSchedule;
-  onOpen: () => void;
-  onClose: () => void;
-  onToggleInsight: () => void;
-  insightOpen: boolean;
-  pending: boolean;
-}) {
-  const startsAtLabel = new Date(schedule.startsAt).toLocaleString('ko-KR', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
+function CreateShowCard() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [title, setTitle] = useState('');
+  const [venue, setVenue] = useState('');
+  const [description, setDescription] = useState('');
+  const create = useMutation({
+    mutationFn: () =>
+      createShow({ title: title.trim(), venue: venue.trim(), description: description.trim() || null }),
+    onSuccess: (show) => {
+      void queryClient.invalidateQueries({ queryKey: ['organizer', 'my-shows'] });
+      router.push(`/organizer/shows/${show.id}`);
+    },
   });
-  const status: ShowScheduleStatus = schedule.status ?? 'SCHEDULED';
-  const canOpen = status === 'SCHEDULED';
-  const canClose = status !== 'CLOSED';
-  // 가격 틱은 ON_SALE 이후 생성 — 그 전에는 인사이트가 빈 패널이라 버튼을 잠근다.
-  const canInsight = status === 'ON_SALE' || status === 'SOLD_OUT';
+  const canSubmit = title.trim().length > 0 && venue.trim().length > 0 && !create.isPending;
 
   return (
-    <div className="flex items-center justify-between gap-3 p-4">
-      <div className="space-y-1">
-        <p className="text-sm font-medium">{startsAtLabel}</p>
-        <div className="flex items-center gap-2 text-xs text-[color:var(--color-muted-foreground)]">
-          <ScheduleStatusBadge status={status} />
-          <span>좌석 총 {schedule.seatTotal ?? '-'}석</span>
+    <section className="surface-card space-y-4" aria-labelledby="create-show">
+      <h2 id="create-show" className="text-lg font-semibold">
+        새 공연 만들기
+      </h2>
+      <form
+        className="grid gap-4 sm:grid-cols-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (canSubmit) create.mutate();
+        }}
+      >
+        <Field label="공연 이름">
+          <Input value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} required />
+        </Field>
+        <Field label="장소">
+          <Input value={venue} maxLength={200} onChange={(e) => setVenue(e.target.value)} required />
+        </Field>
+        <div className="sm:col-span-2">
+          <Field label="소개" hint="선택. 공연 상세 화면에 보여요.">
+            <Input value={description} maxLength={2000} onChange={(e) => setDescription(e.target.value)} />
+          </Field>
         </div>
-      </div>
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={!canOpen || pending}
-          onClick={onOpen}
-          className="rounded-[var(--radius-md)] bg-[color:var(--color-primary)] px-3 py-1.5 text-xs font-semibold text-[color:var(--color-primary-foreground)] disabled:opacity-40 disabled:cursor-not-allowed"
-          title={
-            canOpen
-              ? 'SCHEDULED → ON_SALE'
-              : '이미 ON_SALE / SOLD_OUT / CLOSED 상태입니다.'
-          }
-        >
-          {pending && canOpen ? '진행 중…' : '판매 오픈'}
-        </button>
-        <button
-          type="button"
-          disabled={!canClose || pending}
-          onClick={onClose}
-          className="rounded-[var(--radius-md)] border border-[color:var(--color-border)] px-3 py-1.5 text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {pending && canClose ? '진행 중…' : '판매 종료'}
-        </button>
-        <button
-          type="button"
-          disabled={!canInsight}
-          onClick={onToggleInsight}
-          className={
-            'rounded-[var(--radius-md)] border px-3 py-1.5 text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed ' +
-            (insightOpen
-              ? 'border-[color:var(--color-primary)] text-[color:var(--color-primary)]'
-              : 'border-[color:var(--color-border)]')
-          }
-          title={
-            canInsight
-              ? '판매율·수요 압력·가격 추이 패널을 펼칩니다.'
-              : 'ON_SALE 이후 가격 틱이 생성되면 볼 수 있습니다.'
-          }
-        >
-          {insightOpen ? '인사이트 닫기' : '인사이트'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ────────────────────────────────────────────────────────
- * 배지 / 박스
- * ──────────────────────────────────────────────────────── */
-
-function ShowStatusBadge({ status }: { status: string }) {
-  const tone: Record<string, string> = {
-    DRAFT: 'bg-zinc-100 text-zinc-600',
-    PUBLISHED: 'bg-emerald-100 text-emerald-700',
-    CLOSED: 'bg-rose-100 text-rose-600',
-  };
-  return (
-    <span
-      className={
-        'inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ' +
-        (tone[status] ?? 'bg-zinc-100 text-zinc-600')
-      }
-    >
-      {status}
-    </span>
-  );
-}
-
-function ScheduleStatusBadge({ status }: { status: ShowScheduleStatus }) {
-  const tone: Record<ShowScheduleStatus, string> = {
-    SCHEDULED: 'bg-amber-100 text-amber-700',
-    ON_SALE: 'bg-emerald-100 text-emerald-700',
-    SOLD_OUT: 'bg-zinc-100 text-zinc-600',
-    CLOSED: 'bg-rose-100 text-rose-600',
-  };
-  return (
-    <span
-      className={
-        'inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ' +
-        tone[status]
-      }
-    >
-      {status}
-    </span>
-  );
-}
-
-function Box({
-  children,
-  className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={`rounded-[var(--radius-lg)] border border-[color:var(--color-border)] p-6 text-sm text-[color:var(--color-muted-foreground)] ${className}`}
-    >
-      {children}
-    </div>
-  );
-}
-
-function ErrorBanner({ message }: { message: string }) {
-  return (
-    <div className="rounded-[var(--radius-lg)] border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-600">
-      {message}
-    </div>
+        <div className="sm:col-span-2 flex items-center gap-3">
+          <Button type="submit" disabled={!canSubmit}>
+            {create.isPending ? '만드는 중…' : '공연 만들기'}
+          </Button>
+          <span className="text-sm muted">만든 공연은 ‘준비 중’ 상태로, 공개 전까지 관람객에게 보이지 않아요.</span>
+        </div>
+      </form>
+      {create.isError && (
+        <Notice tone="error" title="공연을 만들지 못했어요.">
+          {errorText(create.error)}
+        </Notice>
+      )}
+    </section>
   );
 }

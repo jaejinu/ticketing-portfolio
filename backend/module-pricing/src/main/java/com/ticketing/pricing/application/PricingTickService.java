@@ -1,14 +1,12 @@
 package com.ticketing.pricing.application;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.ticketing.events.Topics;
 import com.ticketing.outbox.OutboxWriter;
 import com.ticketing.pricing.domain.PricingTick;
 import com.ticketing.pricing.domain.PricingTickRepository;
 import com.ticketing.pricing.outbox.PricingEventPayloads;
 import com.ticketing.pricing.streams.DemandSignalReader;
-import com.ticketing.seat.domain.SeatHoldRepository;
-import com.ticketing.seat.domain.SeatHoldStatus;
 import com.ticketing.show.domain.SeatRepository;
 import com.ticketing.show.domain.SeatStatus;
 import com.ticketing.show.domain.Section;
@@ -37,10 +35,10 @@ import java.util.UUID;
  *     heldCount      = SeatRepo.count(section, HELD)
  *     soldCount      = SeatRepo.count(section, SOLD)
  *     total          = available + held + sold
- *     activeHolds    = SeatHoldRepo.count(scheduleId, ACTIVE)   # 회차 전체
+ *     demandSeats    = streams demand, or section HELD seats when unavailable
  *
  *     occupancyRatio = (held + sold) / total
- *     demandPressure = min(1, activeHolds / total)  # 회차 전체 활성 점유 / 구역 총 좌석
+ *     demandPressure = min(1, demandSeats / total)
  *     currentPrice   = calculator.calculate(basePrice, occupancyRatio, demandPressure)
  *
  *     save PricingTick
@@ -63,7 +61,6 @@ public class PricingTickService {
     private final PricingTickRepository pricingTickRepository;
     private final SectionRepository sectionRepository;
     private final SeatRepository seatRepository;
-    private final SeatHoldRepository seatHoldRepository;
     private final OutboxWriter outboxWriter;
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -71,8 +68,7 @@ public class PricingTickService {
      * Phase 5b — Kafka Streams 1초 텀블링 demand 카운트.
      *
      * <p>
-     *   nullable: streams 가 미가용/스타트업 중일 때 reader 가 0 반환 — fallback 으로
-     *   기존 SeatHoldRepository.countByScheduleIdAndStatus(ACTIVE) 사용.
+     *   Streams 미가용이면 해당 구역 HELD 좌석 수를 사용한다. 정상 0과 구분한다.
      * </p>
      */
     private final DemandSignalReader demandReader;
@@ -81,7 +77,6 @@ public class PricingTickService {
                                PricingTickRepository pricingTickRepository,
                                SectionRepository sectionRepository,
                                SeatRepository seatRepository,
-                               SeatHoldRepository seatHoldRepository,
                                OutboxWriter outboxWriter,
                                ObjectMapper objectMapper,
                                Clock clock,
@@ -90,7 +85,6 @@ public class PricingTickService {
         this.pricingTickRepository = pricingTickRepository;
         this.sectionRepository = sectionRepository;
         this.seatRepository = seatRepository;
-        this.seatHoldRepository = seatHoldRepository;
         this.outboxWriter = outboxWriter;
         this.objectMapper = objectMapper;
         this.clock = clock;
@@ -100,8 +94,6 @@ public class PricingTickService {
     @Transactional
     public int tickSchedule(ShowSchedule schedule) {
         OffsetDateTime now = OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC);
-        long activeHolds = seatHoldRepository.countByScheduleIdAndStatus(
-                schedule.getId(), SeatHoldStatus.ACTIVE);
 
         List<Section> sections = sectionRepository.findByShowScheduleIdOrderByBasePriceDesc(schedule.getId());
         int produced = 0;
@@ -118,12 +110,12 @@ public class PricingTickService {
             BigDecimal occupancyRatio = BigDecimal.valueOf(held + sold)
                     .divide(BigDecimal.valueOf(total), 4, RoundingMode.HALF_UP);
 
-            // Phase 5b: Kafka Streams 1초 윈도우 demand 카운트 우선 사용. 0 이면 fallback.
-            // streams demand = "최근 2초 안에 잡은 좌석 수 합" — 회차 전체 ACTIVE 보다 즉각적.
-            long streamsDemand = demandReader.readRecentDemand(
+            // A valid zero is no demand. Only an unavailable store falls back to this
+            // section's HELD seat count (same units); never use schedule-wide holds.
+            java.util.OptionalLong streamsDemand = demandReader.readRecentDemand(
                     schedule.getId(), section.getId(),
                     java.time.Duration.ofSeconds(2));
-            long demandRaw = streamsDemand > 0 ? streamsDemand : activeHolds;
+            long demandRaw = streamsDemand.orElse(held);
             BigDecimal demandPressure = BigDecimal.valueOf(demandRaw)
                     .divide(BigDecimal.valueOf(total), 4, RoundingMode.HALF_UP)
                     .min(BigDecimal.ONE);

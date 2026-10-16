@@ -1,6 +1,6 @@
 package com.ticketing.alert.dispatch;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.ticketing.alert.dispatch.sender.SmtpAlertSender;
 import org.junit.jupiter.api.Test;
 import org.springframework.mail.javamail.JavaMailSenderImpl;

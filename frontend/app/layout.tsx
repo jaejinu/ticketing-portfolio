@@ -30,6 +30,8 @@ const instrument = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
+  // 하위 페이지는 각 layout 에서 "좌석 선택 · Ticketing" 처럼 전체 제목을 건다. template 은 중간
+  // layout 이 문자열 제목을 가지면 그 아래로 이어지지 않아 쓰지 않는다.
   title: "다이나믹 프라이싱 티켓팅",
   description:
     "수요·잔여좌석·시간 가중으로 가격이 실시간으로 움직이는 콘서트 티켓팅 플랫폼",

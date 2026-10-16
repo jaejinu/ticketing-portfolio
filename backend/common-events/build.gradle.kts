@@ -11,6 +11,7 @@
 
 dependencies {
     // Jackson 만 필요. JsonNode payload 직렬화/역직렬화에 사용.
-    implementation("com.fasterxml.jackson.core:jackson-databind")
+    // Boot 4 부터 Jackson 3 (tools.jackson) 이 기본 — 그룹 id 가 바뀌었다. 버전은 Boot BOM 이 관리.
+    implementation("tools.jackson.core:jackson-databind")
     implementation(project(":common-domain"))
 }

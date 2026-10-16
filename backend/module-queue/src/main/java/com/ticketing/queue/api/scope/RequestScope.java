@@ -18,14 +18,21 @@ public final class RequestScope {
     public static final String SCOPE_USER = "user";
     private static final String CACHE = RequestScope.class.getName() + ".resolved";
     private final JwtTokenVerifier verifier;
+    private final com.ticketing.auth.security.ClientIpResolver clientIp;
 
-    public RequestScope(JwtTokenVerifier verifier) {
+    public RequestScope(JwtTokenVerifier verifier, com.ticketing.auth.security.ClientIpResolver clientIp) {
         this.verifier = verifier;
+        this.clientIp = clientIp;
+    }
+
+    /** 인증 프록시가 넘긴 방문자 IP(공유 비밀 확인) 또는 직접 연결 IP. */
+    public String clientIp(HttpServletRequest request) {
+        return clientIp.resolve(request);
     }
 
     public Resolved resolve(HttpServletRequest request) {
         if (request.getAttribute(CACHE) instanceof Resolved cached) return cached;
-        Resolved resolved = new Resolved(SCOPE_IP, request.getRemoteAddr());
+        Resolved resolved = new Resolved(SCOPE_IP, clientIp.resolve(request));
         String header = request.getHeader(HttpHeaders.AUTHORIZATION);
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7).trim();

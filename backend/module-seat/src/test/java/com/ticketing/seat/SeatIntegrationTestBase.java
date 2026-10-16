@@ -86,6 +86,8 @@ public abstract class SeatIntegrationTestBase {
         registry.add("app.seat.hold.ttl",                  () -> "PT2S");
         registry.add("app.seat.hold.lock-wait",            () -> "PT0.1S");
         registry.add("app.seat.hold.max-seats",            () -> "4");
+        // 대기열 모듈 없이 뜨는 컨텍스트 — 입장 검사는 대기열 IT 와 SmokeIT 가 맡는다.
+        registry.add("app.seat.hold.require-queue-admission", () -> "false");
         registry.add("app.seat.hold.expiry.scan-interval", () -> "PT0.2S");
         registry.add("app.seat.hold.expiry.batch-size",    () -> "50");
         registry.add("app.seat.hold.expiry.enabled",       () -> "false");

@@ -13,9 +13,12 @@
 // 의존성:
 //   - spring-context: @Bean / @Configuration 사용을 위해 최소한만.
 //   - validation: BusinessException 메시지에 javax.validation 메타데이터를 얹기 위해.
+//   - webmvc(compileOnly): 공통 오류 응답 advice(ApiErrorAdvice). 쓰는 모듈은 모두 webmvc 를
+//     이미 갖고 있어 런타임에 따로 넣지 않는다.
 // =============================================================================
 
 dependencies {
     implementation(libs.spring.boot.starter)
     implementation(libs.spring.boot.starter.validation)
+    compileOnly(libs.spring.boot.starter.webmvc)
 }

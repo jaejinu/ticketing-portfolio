@@ -1,7 +1,7 @@
 package com.ticketing.alert.application;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import com.ticketing.alert.domain.Alert;
 import com.ticketing.alert.domain.AlertRepository;
 import com.ticketing.alert.index.AlertIndex;

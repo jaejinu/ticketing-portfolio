@@ -1,6 +1,7 @@
 package com.ticketing.auth;
 
 import com.ticketing.common.time.AppClock;
+import com.ticketing.common.web.ApiErrorAdvice;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Import;
 
@@ -13,6 +14,6 @@ import org.springframework.context.annotation.Import;
  * </p>
  */
 @SpringBootApplication(scanBasePackages = "com.ticketing.auth")
-@Import(AppClock.class)
+@Import({AppClock.class, ApiErrorAdvice.class})
 public class AuthIntegrationTestApp {
 }

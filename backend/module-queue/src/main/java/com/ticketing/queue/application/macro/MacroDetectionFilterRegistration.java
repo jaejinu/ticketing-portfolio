@@ -1,6 +1,6 @@
 package com.ticketing.queue.application.macro;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.ticketing.queue.api.scope.RequestScope;
 import com.ticketing.queue.api.macro.MacroDetectionFilter;
 import com.ticketing.queue.application.QueueProperties;
@@ -34,7 +34,7 @@ public class MacroDetectionFilterRegistration {
 
         FilterRegistrationBean<MacroDetectionFilter> reg = new FilterRegistrationBean<>(filter);
         reg.setName("queueMacroDetectionFilter");
-        reg.setUrlPatterns(List.of("/api/v1/queue/*"));
+        reg.setUrlPatterns(List.of("/api/v1/queue/*", "/api/v1/seat-holds", "/api/v1/payments"));
         reg.setOrder(ORDER_BETWEEN_RATELIMIT_AND_SECURITY);
         return reg;
     }

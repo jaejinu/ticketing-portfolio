@@ -46,6 +46,21 @@ public interface SeatHoldRepository extends JpaRepository<SeatHold, UUID> {
     long countByStatus(String status);
 
     /**
+     * 사용자가 회차에서 이미 가진 좌석 수 — 살아 있는 ACTIVE 점유 + SOLD.
+     * 1인 구매 한도 검사용. 만료 시각이 지났지만 스케줄러가 아직 못 치운 ACTIVE 는 제외한다.
+     */
+    @Query("""
+            SELECT count(i)
+              FROM SeatHold h JOIN h.seatIds i
+             WHERE h.holderId = :holderId
+               AND h.scheduleId = :scheduleId
+               AND (h.status = 'SOLD' OR (h.status = 'ACTIVE' AND h.expiresAt > :now))
+            """)
+    long countSeatsHeldOrSold(@Param("holderId") UUID holderId,
+                              @Param("scheduleId") UUID scheduleId,
+                              @Param("now") OffsetDateTime now);
+
+    /**
      * 만료 스케줄러용 — 현재 시각 이전에 expires_at 이 지난 ACTIVE hold 를 배치 크기만큼 가져온다.
      *
      * <p>

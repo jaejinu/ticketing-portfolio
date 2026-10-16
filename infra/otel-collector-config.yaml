@@ -33,11 +33,13 @@ processors:
     spike_limit_percentage: 25
 
   # resource: 모든 텔레메트리에 공통 라벨 추가 — Grafana에서 필터링 편리.
+  # insert = 값이 없을 때만 local. 예전 upsert 는 데모가 보낸 public-demo 까지 local 로 덮어써
+  # 데모와 로컬을 구분할 수 없었다 (QA P3).
   resource:
     attributes:
       - key: deployment.environment
         value: local
-        action: upsert
+        action: insert
 
 exporters:
   # Native OTLP replaces the removed Loki exporter. Loki appends /v1/logs.

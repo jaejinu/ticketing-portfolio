@@ -40,10 +40,15 @@ services:
   postgres:
     image: ${POSTGRES_IMAGE:-timescale/timescaledb:2.30.2-pg16@sha256:6f139d56042989bd35f50ba5986e492cd32e35cc6778c50be2659add298dc09f}
     container_name: ticketing-postgres
+    # 강화(QA P3): 권한 상승 금지 + 메모리 상한. 엔트리포인트가 root 로 시작해 postgres 로 내려가므로
+    # cap_drop 은 두지 않는다.
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 2g
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ticket}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ticket}
+      # 기본 비밀번호 없음 — infra/.env 에 꼭 둔다(make up 이 처음 만들 때 무작위로 채움). QA P3.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?infra/.env 에 POSTGRES_PASSWORD 를 지정하세요}
       POSTGRES_DB: ${POSTGRES_DB:-ticketing}
       # 로컬 개발 편의 — pg_stat_statements 자동 로드.
       POSTGRES_INITDB_ARGS: "--data-checksums"
@@ -76,14 +81,20 @@ services:
   redis:
     image: ${REDIS_IMAGE:-redis:7.4.11-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499}
     container_name: ticketing-redis
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    # REDIS_PASSWORD 가 있으면 AUTH 를 요구한다(make up 이 새 .env 에 무작위로 채움). 비어 있으면 예전처럼
+    # 비밀번호 없이 — 이미 쓰던 .env 를 깨지 않게. 백엔드 local 프로필도 같은 변수를 읽는다.
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    command: ["sh", "-c", 'exec redis-server --appendonly yes $${REDIS_PASSWORD:+--requirepass "$$REDIS_PASSWORD"}']
     ports:
       - "${DEV_BIND_ADDRESS:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", '[ -n "$$REDIS_PASSWORD" ] && export REDISCLI_AUTH="$$REDIS_PASSWORD"; redis-cli ping | grep -q PONG']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -99,6 +110,8 @@ services:
     # Apache 공식 JVM 이미지. 기존 KRaft 메타데이터/토픽/오프셋을 복원한 볼륨으로 검증.
     image: ${KAFKA_IMAGE:-apache/kafka:4.3.1@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837}
     container_name: ticketing-kafka
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1536m
     restart: unless-stopped
     ports:
       # 호스트 → EXTERNAL 리스너(9094)로 연결해야 한다.
@@ -106,7 +119,7 @@ services:
       # advertised "kafka:9092"(도커 내부 DNS) 를 받아 이후 모든 연결이 실패한다
       # (호스트에서 도는 백엔드의 Kafka consume 전멸 — 알람/WS팬아웃/수요집계).
       - "${DEV_BIND_ADDRESS:-127.0.0.1}:${KAFKA_PORT:-9092}:9094"
-      - "${DEV_BIND_ADDRESS:-127.0.0.1}:${KAFKA_CONTROLLER_PORT:-9093}:9093"
+      # 9093(KRaft 컨트롤러)은 컨테이너 안에서만 쓴다 — 예전엔 호스트에도 열려 있었다(QA P3).
       # k3d pod 용 리스너 — pod 는 host.k3d.internal 로 호스트에 접근하므로
       # advertised 주소도 host.k3d.internal 이어야 한다 (localhost 광고를 받으면 pod 안에서 즉사).
       - "${DEV_BIND_ADDRESS:-127.0.0.1}:9096:9096"
@@ -156,6 +169,13 @@ services:
     # Legacy MAILHOG_* variables remain supported for existing local .env files.
     image: axllent/mailpit:v1.31.4@sha256:b68349e3a014b90c5610bfb26b2ae36f3892d7b8cf25ee140c6c71c98d2fcf48
     container_name: ticketing-mailpit
+    # 루트로 돌던 것을 일반 사용자로, 쓰기 가능한 곳은 /tmp 만.
+    user: "1000:1000"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 128m
     restart: unless-stopped
     ports:
       - "${DEV_BIND_ADDRESS:-127.0.0.1}:${MAILPIT_SMTP_PORT:-${MAILHOG_SMTP_PORT:-1025}}:1025"  # SMTP
@@ -177,6 +197,11 @@ services:
     build:
       context: ./mock-services/fcm-mock
     container_name: ticketing-fcm-mock
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 256m
     restart: unless-stopped
     environment:
       PORT: "8086"
@@ -198,6 +223,11 @@ services:
     build:
       context: ./mock-services/mock-pg
     container_name: ticketing-mock-pg
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true          # 결제 기록은 mock-pg-data 볼륨(/app/data)에만 쓴다
+    tmpfs: [/tmp]
+    mem_limit: 256m
     restart: unless-stopped
     environment:
       PORT: "8087"

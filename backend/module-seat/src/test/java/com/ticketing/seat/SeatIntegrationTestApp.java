@@ -1,6 +1,7 @@
 package com.ticketing.seat;
 
 import com.ticketing.common.time.AppClock;
+import com.ticketing.common.web.ApiErrorAdvice;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -30,7 +31,7 @@ import org.springframework.context.annotation.Import;
         // Phase 3a outbox 추출 후 OutboxWriter/Publisher 빈을 본 패키지에서 스캔해야 한다.
         "com.ticketing.outbox"
 })
-@Import(AppClock.class)
+@Import({AppClock.class, ApiErrorAdvice.class})
 public class SeatIntegrationTestApp {
 
     /**

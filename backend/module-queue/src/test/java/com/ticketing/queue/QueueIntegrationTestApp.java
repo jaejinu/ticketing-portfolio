@@ -1,6 +1,7 @@
 package com.ticketing.queue;
 
 import com.ticketing.common.time.AppClock;
+import com.ticketing.common.web.ApiErrorAdvice;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -31,7 +32,7 @@ import org.springframework.context.annotation.Import;
         "com.ticketing.auth",
         "com.ticketing.common"
 })
-@Import(AppClock.class)
+@Import({AppClock.class, ApiErrorAdvice.class})
 public class QueueIntegrationTestApp {
 
     /**

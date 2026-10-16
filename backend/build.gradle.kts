@@ -32,33 +32,35 @@ subprojects {
     group = "com.ticketing"
     version = "0.0.1-SNAPSHOT"
 
-    // Java 17 — Spring Boot 3.5 의 최소 요구 버전과 일치.
+    // Java 21 LTS — 2026-10-14 에 17(Boot 4 최소 버전)에서 올림. 가상 스레드 등은 아직 쓰지 않는다.
     java {
         toolchain {
-            languageVersion.set(JavaLanguageVersion.of(17))
+            languageVersion.set(JavaLanguageVersion.of(21))
         }
     }
 
-    // Also apply to app-gateway's automatic Spring Boot BOM import.
-    extra["jackson-bom.version"] = "2.21.7"
-    extra["netty.version"] = "4.1.138.Final"
-    extra["tomcat.version"] = "10.1.60"
-    extra["postgresql.version"] = "42.7.13"
-    extra["log4j2.version"] = "2.25.5"
+    // OTel SDK 는 opentelemetry-spring-boot-starter(2.32.x) 가 기대하는 1.66 라인에 맞춘다.
+    // Boot 4.1.1 BOM 기본값(1.62)과 섞이면 자동 계측 모듈이 런타임에 클래스를 못 찾는다.
+    // app-gateway 의 opentelemetry-api-incubator 버전도 이 값을 따른다.
     extra["opentelemetry.version"] = "1.66.0"
+    // 아래 bomProperty 와 같은 값. spring-boot 플러그인을 쓰는 app-gateway 는 프로젝트 속성을 읽는다.
+    extra["jackson-bom.version"] = "3.1.7"
+    extra["jackson-2-bom.version"] = "2.21.7"
+    extra["tomcat.version"] = "11.0.27"
 
     // Spring Boot BOM 을 모든 모듈에 imports.
     // -> spring-boot-starter-* / spring-kafka / flyway-core 등은 버전 명시 없이 사용 가능.
+    // 보안 패치용 덮어쓰기: Boot 4.1.1 BOM 기본값에 공개 취약점이 있어 같은 라인의 패치 버전으로 올린다.
+    //   - jackson 3.1.5 / 2.21.5 → 3.1.7 / 2.21.7 (GHSA-7hhh-6rmp-j9qf, GHSA-wv8q-qhhj-9h54 등)
+    //   - tomcat 11.0.24 → 11.0.27 (GHSA-9xv2-5v5q-p794 등 인증 우회)
+    // 다음 Boot 패치가 이 버전 이상을 관리하면 지운다. scripts/audit-backend.py 가 다시 확인한다.
     the<io.spring.gradle.dependencymanagement.dsl.DependencyManagementExtension>().apply {
         imports {
             mavenBom("org.springframework.boot:spring-boot-dependencies:${rootProject.libs.versions.spring.boot.get()}") {
-                // Security patches newer than the Boot BOM; see docs/security-audit.md.
-                bomProperty("jackson-bom.version", "2.21.7")
-                bomProperty("netty.version", "4.1.138.Final")
-                bomProperty("tomcat.version", "10.1.60")
-                bomProperty("postgresql.version", "42.7.13")
-                bomProperty("log4j2.version", "2.25.5")
                 bomProperty("opentelemetry.version", "1.66.0")
+                bomProperty("jackson-bom.version", "3.1.7")
+                bomProperty("jackson-2-bom.version", "2.21.7")
+                bomProperty("tomcat.version", "11.0.27")
             }
             mavenBom("org.springframework.cloud:spring-cloud-dependencies:${rootProject.libs.versions.spring.cloud.get()}")
             mavenBom("org.testcontainers:testcontainers-bom:${rootProject.libs.versions.testcontainers.get()}")
@@ -66,7 +68,7 @@ subprojects {
     }
 
     the<io.spring.gradle.dependencymanagement.dsl.DependencyManagementExtension>().dependencies {
-        dependency("at.yawk.lz4:lz4-java:1.11.4")
+        dependency("at.yawk.lz4:lz4-java:1.12.0")
     }
 
     // 공통 저장소는 settings.gradle.kts 에 중앙 집중되어 있으므로 여기엔 적지 않는다.

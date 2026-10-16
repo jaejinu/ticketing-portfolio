@@ -20,4 +20,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByEmail(String email);
 
     boolean existsByEmail(String email);
+
+    /** 관리자 사용자 검색 — 이메일 일부로 최대 20명. */
+    java.util.List<User> findTop20ByEmailContainingIgnoreCaseOrderByEmailAsc(String emailPart);
 }

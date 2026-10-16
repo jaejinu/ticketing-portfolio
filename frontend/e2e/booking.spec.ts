@@ -359,6 +359,49 @@ test("expired hold cannot submit payment", async ({ page }) => {
   expect(requests).toHaveLength(0);
 });
 
+test("checkout countdown follows the server clock when the device clock runs fast", async ({ page }) => {
+  await mockApi(page);
+  const serverNow = Date.now();
+  // 기기 시계가 5분 빠르다 — 서버 기준 4분 남은 점유가 예전엔 화면에서 이미 만료로 보였다.
+  await page.clock.setSystemTime(serverNow + 5 * 60_000);
+  await page.route("**/api/v1/seat-holds/hold-1", (route) =>
+    route.fulfill({
+      json: {
+        ...hold,
+        expiresAt: new Date(serverNow + 4 * 60_000).toISOString(),
+        serverTime: new Date(serverNow).toISOString(),
+      },
+    }),
+  );
+  await page.goto("/checkout/hold-1");
+  await expect(page.getByRole("button", { name: "180,000원 결제하기" })).toBeEnabled();
+  await expect(page.getByText("좌석 확보 시간이 끝났어요.")).toHaveCount(0);
+});
+
+test("unknown show address says the show is missing and does not retry", async ({ page }) => {
+  await mockApi(page);
+  let calls = 0;
+  await page.route("**/api/v1/shows/no-such-show", (route) => {
+    calls++;
+    return route.fulfill({ status: 404, json: { code: "SHOW_NOT_FOUND", message: "공연을 찾을 수 없습니다.", status: 404 } });
+  });
+  await page.goto("/shows/no-such-show");
+  await expect(page.getByText("공연을 찾을 수 없어요.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "공연 목록으로" })).toBeVisible();
+  expect(calls).toBe(1);
+});
+
+test("pages have their own titles", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/shows");
+  await expect(page).toHaveTitle("공연 · Ticketing");
+  // 잘못된 형식의 공연 주소는 서버에서 바로 "찾을 수 없어요" 제목.
+  await page.goto("/shows/show-1");
+  await expect(page).toHaveTitle("공연을 찾을 수 없어요 · Ticketing");
+  await page.goto("/login");
+  await expect(page).toHaveTitle("로그인 · Ticketing");
+});
+
 test("unknown payment result retries with original idempotency key", async ({
   page,
 }) => {
@@ -433,6 +476,41 @@ test("waiting queue displays server position and recovers after a connection fai
   offline = false;
   await page.getByRole("button", { name: "다시 시도", exact: true }).click();
   await expect(page.getByText("약 2분", { exact: true })).toBeVisible();
+});
+
+test("queue for a schedule that is not on sale explains instead of retrying", async ({ page }) => {
+  await mockApi(page);
+  let enqueueCalls = 0;
+  await page.route("**/api/v1/queue/enqueue", (route) => {
+    enqueueCalls++;
+    return route.fulfill({
+      status: 409,
+      json: { code: "SALES_NOT_OPEN", message: "판매 중인 회차에만 줄을 설 수 있습니다.", status: 409 },
+    });
+  });
+  await page.goto("/shows/show-1/schedule-1/queue");
+  await expect(page.getByText("지금은 판매 중인 회차가 아니에요.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "공연 정보로 돌아가기" })).toHaveAttribute("href", "/shows/show-1");
+  await expect(page.getByRole("button", { name: "다시 시도" })).toHaveCount(0);
+  expect(enqueueCalls).toBe(1);
+});
+
+test("a ticket left by another account is replaced with a new one", async ({ page }) => {
+  await mockApi(page);
+  await page.addInitScript(() => {
+    window.sessionStorage.setItem("ticketing:queue-ticket:schedule-1", "someone-elses-ticket");
+  });
+  await page.route("**/api/v1/queue/**", (route) => {
+    const url = route.request().url();
+    if (url.endsWith("/tickets/someone-elses-ticket"))
+      return route.fulfill({ status: 404, json: { code: "NOT_FOUND", message: "대기표를 찾을 수 없습니다.", status: 404 } });
+    return route.fulfill({
+      json: { state: "WAITING", ticket: "my-ticket", scheduleId: schedule.id, position: 3, estimatedWaitSeconds: 10 },
+    });
+  });
+  await page.goto("/shows/show-1/schedule-1/queue");
+  await expect(page.getByText("1분 미만", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.sessionStorage.getItem("ticketing:queue-ticket:schedule-1"))).toBe("my-ticket");
 });
 
 test("signup preserves booking destination through login", async ({
@@ -1070,3 +1148,53 @@ test("reconnected subscriptions immediately refresh missed seats and price histo
   expect(activeDestinations().filter(s => s.endsWith('/seats'))).toHaveLength(1);
   expect(activeDestinations().filter(s => s.endsWith('/pricing'))).toHaveLength(1);
 });
+
+for (const path of ["/me/tickets", "/me/tickets/payment-1"]) {
+  test(`refund pending automatically completes on ${path}`, async ({ page }) => {
+    await mockApi(page);
+    let recovered = false;
+    await page.route("**/api/v1/payments", (route) => route.fulfill({
+      json: { payments: [{ ...hold, ...payment, status: recovered ? "REFUNDED" : "APPROVED", refundPending: !recovered }] },
+    }));
+    await page.goto(path);
+    await expect(page.getByText("환불 처리 중", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("예매 확정", { exact: true })).toHaveCount(0);
+    recovered = true;
+    await expect(page.getByText("환불 완료", { exact: true }).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("환불 처리 중", { exact: true })).toHaveCount(0);
+  });
+}
+
+for (const path of ["/me/tickets", "/me/tickets/payment-1"]) {
+  test(`refund event refreshes ${path} before the next poll`, async ({ page }) => {
+    await page.clock.install();
+    await mockApi(page);
+    let refunded = false;
+    let sendRefund: (() => void) | undefined;
+    await page.route("**/api/v1/payments", (route) => route.fulfill({
+      json: { payments: [{ ...hold, ...payment, status: refunded ? "REFUNDED" : "APPROVED", refundPending: false }] },
+    }));
+    await page.routeWebSocket(/\/ws(?:\?|$)/, (socket) => {
+      socket.onMessage((raw) => {
+        const frame = String(raw);
+        if (frame.startsWith("CONNECT\n") || frame.startsWith("STOMP\n"))
+          socket.send("CONNECTED\nversion:1.2\nheart-beat:0,0\n\n\0");
+        if (frame.startsWith("SUBSCRIBE\n") && frame.includes("destination:/user/queue/payments\n")) {
+          const id = frame.match(/\nid:([^\n]+)/)?.[1];
+          sendRefund = () => socket.send(`MESSAGE\nsubscription:${id}\nmessage-id:refund-1\ndestination:/user/queue/payments\n\n${JSON.stringify({ type: "PAYMENT_REFUNDED", paymentId: "payment-1" })}\0`);
+        }
+      });
+    });
+    await page.goto(path);
+    await expect(page.getByText("예매 확정", { exact: true }).first()).toBeVisible();
+    await expect.poll(() => !!sendRefund).toBe(true);
+    await page.clock.pauseAt(new Date(Date.now() + 500));
+    refunded = true;
+    const refreshed = page.waitForResponse(r => r.url().endsWith('/api/v1/payments'));
+    sendRefund!();
+    await (await refreshed).finished();
+    // Flush React Query notifications while keeping the 10-second poll paused.
+    await page.clock.runFor(100);
+    await expect(page.getByText("환불 완료", { exact: true }).first()).toBeVisible({ timeout: 3000 });
+  });
+}

@@ -50,6 +50,7 @@ class PaymentRecoveryIntegrationTest {
     @Autowired ShowScheduleRepository schedules;
     @Autowired UserRepository users;
     @Autowired SeatHoldService seatService;
+    @Autowired PaymentRefundService refunds;
 
     UUID holder;
     SeatHold hold;
@@ -58,12 +59,12 @@ class PaymentRecoveryIntegrationTest {
     @BeforeEach
     void seed() {
         reset(pg);
-        jdbc.execute("TRUNCATE idempotency_keys, payments, outbox_events, seat_hold_prices, seat_hold_items, seat_holds, seats, sections, show_schedules, shows, users CASCADE");
+        jdbc.execute("TRUNCATE admin_audit_log, idempotency_keys, payments, outbox_events, seat_hold_prices, seat_hold_items, seat_holds, seats, sections, show_schedules, shows, users CASCADE");
         User user = users.save(User.newUser("payment-it@example.com", "test-hash", "Payment IT"));
         holder = user.getId();
         Show show = shows.save(Show.createWithId(UUID.randomUUID(), holder, "Payment IT", "Hall", null, null, ShowStatus.PUBLISHED));
         OffsetDateTime now = OffsetDateTime.now();
-        ShowSchedule schedule = schedules.save(ShowSchedule.create(show.getId(), now.plusDays(7), now.plusDays(7).plusHours(2), now.minusDays(1)));
+        ShowSchedule schedule = schedules.save(ShowSchedule.createWithId(UUID.randomUUID(), show.getId(), now.plusDays(7), now.plusDays(7).plusHours(2), now.minusDays(1), ShowScheduleStatus.ON_SALE));
         Section section = sections.save(Section.create(schedule.getId(), "VIP", SectionGrade.VIP, 100000));
         Seat seat = Seat.create(section.getId(), "A", 1);
         seat.hold();
@@ -282,5 +283,183 @@ class PaymentRecoveryIntegrationTest {
         clearInvocations(pg);
         assertThatThrownBy(() -> pay("expired")).isInstanceOf(BusinessException.class);
         verify(pg, never()).charge(any(), anyLong());
+    }
+
+    @Test
+    void refundReturnsTheSeatAndIsIdempotent() {
+        Payment approved = pay("refund");
+        assertThat(approved.getStatus()).isEqualTo("APPROVED");
+        UUID admin = UUID.randomUUID();
+
+        Payment refunded = refunds.refund(admin, approved.getId(), "공연 취소");
+        assertThat(refunded.getStatus()).isEqualTo("REFUNDED");
+        verify(pg).cancel(approved.getId());
+        assertThat(seats.findById(hold.getSeatIds().iterator().next()).orElseThrow().getStatus()).isEqualTo("AVAILABLE");
+        assertThat(holds.findById(hold.getId()).orElseThrow().getStatus()).isEqualTo("RELEASED");
+        assertThat(events("PAYMENT_REFUNDED")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM admin_audit_log WHERE action = 'PAYMENT_REFUNDED' AND actor_id = ?",
+                Long.class, admin)).isEqualTo(1);
+
+        clearInvocations(pg);
+        assertThat(refunds.refund(admin, approved.getId(), "again").getStatus()).isEqualTo("REFUNDED");
+        verify(pg, never()).cancel(any());
+        assertThat(events("PAYMENT_REFUNDED")).isEqualTo(1);
+    }
+
+    @Test
+    void failedRefundPersistsIntentAndRecoversWithoutAnotherAdminRequest() {
+        Payment approved = pay("refund-pg-down");
+        UUID admin = UUID.randomUUID();
+        when(pg.cancel(any())).thenThrow(new PgUnavailableException("down", null));
+        assertThatThrownBy(() -> refunds.refund(admin, approved.getId(), "취소"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.code()).isEqualTo(com.ticketing.common.error.ErrorCode.PAYMENT_PG_FAILURE));
+        assertThat(reload(approved.getId()).getStatus()).isEqualTo("APPROVED");
+        assertThat(reload(approved.getId()).isRefundPending()).isTrue();
+        assertThat(saga.listMyDetails(holder).getFirst().refundPending()).isTrue();
+        assertThat(saga.listMyDetails(holder).getFirst().seatIds()).isNotEmpty();
+        assertThat(reload(approved.getId()).getRefundActorId()).isEqualTo(admin);
+        assertThat(seats.findById(hold.getSeatIds().iterator().next()).orElseThrow().getStatus()).isEqualTo("SOLD");
+        assertThat(events("PAYMENT_REFUNDED")).isZero();
+
+        // A retry before the lease expires must not call the PG or replace the audit actor.
+        refunds.refund(UUID.randomUUID(), approved.getId(), "retry");
+        verify(pg, times(1)).cancel(approved.getId());
+        doReturn(new PgOrder("CANCELLED", null, "CANCELLED", null)).when(pg).cancel(any());
+        due(approved.getId());
+        refunds.reconcileDue();
+        refunds.reconcileDue();
+        assertThat(reload(approved.getId()).getStatus()).isEqualTo("REFUNDED");
+        assertThat(reload(approved.getId()).isRefundPending()).isFalse();
+        assertThat(saga.listMyDetails(holder).getFirst().refundPending()).isFalse();
+        assertThat(reload(approved.getId()).getRefundActorId()).isEqualTo(admin);
+        assertThat(reload(approved.getId()).getRefundReason()).isEqualTo("취소");
+        assertThat(seats.findById(hold.getSeatIds().iterator().next()).orElseThrow().getStatus()).isEqualTo("AVAILABLE");
+        assertThat(events("PAYMENT_REFUNDED")).isEqualTo(1);
+        verify(pg, times(2)).cancel(approved.getId());
+    }
+
+    @Test
+    void refundRecoversWhenPgCancelledButDatabaseCommitFailed() {
+        Payment approved = pay("refund-commit-failure");
+        jdbc.execute("CREATE FUNCTION reject_refund() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.status = 'REFUNDED' THEN RAISE EXCEPTION 'simulated crash'; END IF; RETURN NEW; END $$");
+        jdbc.execute("CREATE TRIGGER reject_refund BEFORE UPDATE ON payments FOR EACH ROW EXECUTE FUNCTION reject_refund()");
+        try {
+            assertThatThrownBy(() -> refunds.refund(UUID.randomUUID(), approved.getId(), "cancel"))
+                    .isInstanceOf(RuntimeException.class);
+            assertThat(reload(approved.getId()).isRefundPending()).isTrue();
+            assertThat(events("PAYMENT_REFUNDED")).isZero();
+            assertThat(seats.findById(hold.getSeatIds().iterator().next()).orElseThrow().getStatus()).isEqualTo("SOLD");
+        } finally {
+            jdbc.execute("DROP TRIGGER reject_refund ON payments");
+            jdbc.execute("DROP FUNCTION reject_refund()");
+        }
+        due(approved.getId());
+        refunds.reconcileDue();
+        assertThat(reload(approved.getId()).getStatus()).isEqualTo("REFUNDED");
+        assertThat(events("PAYMENT_REFUNDED")).isEqualTo(1);
+        assertThat(seats.findById(hold.getSeatIds().iterator().next()).orElseThrow().getStatus()).isEqualTo("AVAILABLE");
+        verify(pg, times(2)).cancel(approved.getId());
+    }
+
+    @Test
+    void lateRefundWorkerCannotPublishAgainAfterRecoveryTakesItsLease() throws Exception {
+        Payment approved = pay("concurrent-refund");
+        CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        when(pg.cancel(approved.getId())).thenAnswer(invocation -> {
+            if (calls.incrementAndGet() == 1) {
+                entered.countDown();
+                assertThat(release.await(10, TimeUnit.SECONDS)).isTrue();
+            }
+            return new PgOrder("CANCELLED", null, "CANCELLED", null);
+        });
+        UUID actor = UUID.randomUUID();
+        Future<Payment> first = executor.submit(() -> refunds.refund(actor, approved.getId(), "original"));
+        assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+        try {
+            Payment duplicate = refunds.refund(UUID.randomUUID(), approved.getId(), "duplicate");
+            assertThat(duplicate.isRefundPending()).isTrue();
+            assertThat(calls.get()).isEqualTo(1);
+            due(approved.getId());
+            refunds.reconcileDue();
+            assertThat(reload(approved.getId()).getStatus()).isEqualTo("REFUNDED");
+        } finally { release.countDown(); }
+        assertThat(first.get(5, TimeUnit.SECONDS).getStatus()).isEqualTo("REFUNDED");
+        assertThat(events("PAYMENT_REFUNDED")).isEqualTo(1);
+        assertThat(reload(approved.getId()).getRefundActorId()).isEqualTo(actor);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM admin_audit_log WHERE action='PAYMENT_REFUNDED'", Long.class)).isEqualTo(1);
+    }
+
+    @Test
+    void scheduleClosedWhilePgOutcomeUnknownCancelsInsteadOfSelling() {
+        Payment pending = unknown();
+        jdbc.update("UPDATE show_schedules SET status='CLOSED' WHERE id=?", hold.getScheduleId());
+        due(pending.getId());
+        saga.reconcile(pending.getId());
+        assertThat(reload(pending.getId()).getStatus()).isEqualTo("FAILED");
+        verify(pg).cancel(pending.getId());
+        assertThat(events("PAYMENT_APPROVED")).isZero();
+        assertThat(events("SEAT_SOLD")).isZero();
+        assertThat(seats.findById(hold.getSeatIds().iterator().next()).orElseThrow().getStatus()).isEqualTo("HELD");
+    }
+
+    @Test
+    void scheduleRefundRequiresAClosedSchedule() {
+        Payment approved = pay("schedule-refund");
+        assertThatThrownBy(() -> refunds.refundSchedule(UUID.randomUUID(), hold.getScheduleId(), null))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.code()).isEqualTo(com.ticketing.common.error.ErrorCode.INVALID_SHOW_STATE));
+
+        jdbc.update("UPDATE show_schedules SET status = 'CLOSED' WHERE id = ?", hold.getScheduleId());
+        var batch = refunds.refundSchedule(UUID.randomUUID(), hold.getScheduleId(), "공연 취소");
+        assertThat(batch.refunded()).containsExactly(approved.getId());
+        assertThat(batch.failed()).isEmpty();
+        assertThat(reload(approved.getId()).getStatus()).isEqualTo("REFUNDED");
+    }
+
+    @Test
+    void scheduleClosedAfterHoldIsNeverCharged() {
+        // 점유 뒤 조직자가 회차를 닫은 경우 — PG 를 부르기 전에 판매 자격을 다시 본다.
+        jdbc.update("UPDATE show_schedules SET status = 'CLOSED' WHERE id = ?", hold.getScheduleId());
+        assertThatThrownBy(() -> pay("closed"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.code()).isEqualTo(com.ticketing.common.error.ErrorCode.SALES_NOT_OPEN));
+        verify(pg, never()).charge(any(), anyLong());
+        assertThat(payments.count()).isZero();
+    }
+
+    @Test
+    void databaseRejectsSecondActivePaymentForSameHoldAndUnknownReferences() {
+        // 앱의 잠금을 거치지 않은 경로(운영 스크립트 등)에서도 이중 청구가 DB 에서 막힌다 (V014).
+        Payment approved = pay("first");
+        String insert = "INSERT INTO payments (id, hold_id, holder_id, schedule_id, amount, status) VALUES (?, ?, ?, ?, 100000, ?)";
+        assertThatThrownBy(() -> jdbc.update(insert, UUID.randomUUID(), hold.getId(), holder, hold.getScheduleId(), "PENDING"))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        // 실패한 결제 기록은 몇 건이든 남길 수 있다.
+        jdbc.update(insert, UUID.randomUUID(), hold.getId(), holder, hold.getScheduleId(), "FAILED");
+        // 없는 점유·회차를 가리키는 결제는 만들 수 없다.
+        assertThatThrownBy(() -> jdbc.update(insert, UUID.randomUUID(), UUID.randomUUID(), holder, hold.getScheduleId(), "FAILED"))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbc.update(insert, UUID.randomUUID(), hold.getId(), holder, UUID.randomUUID(), "FAILED"))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        assertThat(reload(approved.getId()).getStatus()).isEqualTo("APPROVED");
+    }
+
+    @Test
+    void oldIdempotencyKeysArePurgedButPendingOnesStay() {
+        Payment pending = unknown(); // 결과 불명 — PENDING 으로 남는다
+        UUID failed = UUID.randomUUID();
+        jdbc.update("INSERT INTO payments (id, hold_id, holder_id, schedule_id, amount, status) VALUES (?, ?, ?, ?, 100000, 'FAILED')",
+                failed, hold.getId(), holder, hold.getScheduleId());
+        jdbc.update("INSERT INTO idempotency_keys (holder_id, idempotency_key, request_hash, payment_id) VALUES (?, 'old', 'h', ?)",
+                holder, failed);
+        jdbc.update("UPDATE idempotency_keys SET created_at = now() - interval '8 days'");
+
+        assertThat(new IdempotencyKeyPurger(jdbc, new PaymentProperties()).purgeOnce()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM idempotency_keys WHERE payment_id = ?", Long.class, failed))
+                .isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM idempotency_keys WHERE payment_id = ?", Long.class, pending.getId()))
+                .isEqualTo(1);
     }
 }

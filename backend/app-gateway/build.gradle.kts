@@ -4,7 +4,7 @@
 // 책임:
 //   - 모든 module-*/common-* 를 implementation 으로 끌어와 단일 프로세스로 부트런.
 //   - REST(:8088) + WebSocket(:8088/ws) 의 진입점. (컨테이너에선 SERVER_PORT=8080)
-//   - Flyway location 을 모듈별 db/migration 디렉터리 11개로 통합 지정.
+//   - Flyway가 각 모듈의 db/migration 디렉터리를 공통 classpath 경로에서 검색.
 //   - Actuator 는 management.server.port=8081 로 분리해 운영 트래픽 격리.
 //
 // 왜 spring-boot 플러그인을 여기에만 apply 하는가:
@@ -26,6 +26,8 @@ dependencies {
     // 공통 모듈
     implementation(project(":common-domain"))
     implementation(project(":common-events"))
+    // 운영자 outbox 현황·재발행(AdminOutboxController)
+    implementation(project(":common-outbox"))
 
     // 도메인 모듈 (전부 끌어와 단일 부트런)
     implementation(project(":module-auth"))
@@ -38,7 +40,7 @@ dependencies {
     implementation(project(":module-ws-bridge"))
 
     // 게이트웨이 자체에 필요한 starters (web/actuator/security)
-    implementation(libs.spring.boot.starter.web)
+    implementation(libs.spring.boot.starter.webmvc)
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.boot.starter.security)
     implementation(libs.spring.boot.starter.validation)
@@ -47,15 +49,17 @@ dependencies {
     implementation(libs.micrometer.tracing.bridge.otel)
     implementation(libs.micrometer.registry.otlp)
     implementation(libs.opentelemetry.spring.starter)
+    implementation(libs.opentelemetry.logback.appender)
     // Incubator API must follow the OTel SDK version (ConfigProvider, gauges).
     implementation("io.opentelemetry:opentelemetry-api-incubator:${property("opentelemetry.version")}-alpha")
 
     // Flyway/DB 드라이버는 app-gateway 에도 두어 spring.flyway.locations 통합 적용 가능.
-    implementation(libs.flyway.core)
+    implementation(libs.spring.boot.starter.flyway)
     runtimeOnly(libs.flyway.postgresql)
     runtimeOnly(libs.postgresql)
 
     // 통합 테스트는 Testcontainers 로 인프라 임시 기동.
+    testImplementation(libs.spring.boot.starter.webmvc.test)
     testImplementation(libs.testcontainers.junit)
     testImplementation(libs.testcontainers.postgresql)
     testImplementation(libs.testcontainers.kafka)
@@ -64,6 +68,11 @@ dependencies {
 
 application {
     mainClass.set("com.ticketing.gateway.TicketingApplication")
+}
+
+// 개발용 bootRun 만 기본 프로필 local — jar 실행은 프로필을 꼭 지정해야 한다(TicketingApplication).
+tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
+    systemProperty("spring.profiles.active", System.getenv("SPRING_PROFILES_ACTIVE") ?: "local")
 }
 
 // bootJar 산출물 이름을 단순하게.

@@ -190,6 +190,16 @@ public class SeatHold {
         this.releasedAt = now;
     }
 
+    /** 환불 — SOLD → RELEASED. 1인 좌석 한도 계산에서도 빠진다. */
+    public void releaseAfterRefund(OffsetDateTime now) {
+        if (!SeatHoldStatus.SOLD.equals(this.status)) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST,
+                    "판매 확정된 hold 만 환불로 해제할 수 있습니다. holdId=" + id + ", status=" + status);
+        }
+        this.status = SeatHoldStatus.RELEASED;
+        this.releasedAt = now;
+    }
+
     /** 결제 확정 시 SOLD 전이. (Phase 5) */
     public void markSold(OffsetDateTime now) {
         if (!SeatHoldStatus.ACTIVE.equals(this.status) || !expiresAt.isAfter(now)) {

@@ -1,8 +1,7 @@
 "use client";
 import { use } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { listMyPayments } from "@/lib/api/payments";
+import { useMyPayments } from "@/lib/query/useMyPayments";
 import { TicketSummary } from "@/components/booking/TicketSummary";
 import { Notice } from "@/components/ui/Notice";
 import { Button } from "@/components/ui/Button";
@@ -14,17 +13,7 @@ export default function TicketDetailPage({
   params: Promise<{ paymentId: string }>;
 }) {
   const { paymentId } = use(params);
-  const query = useQuery({
-    queryKey: ["my-payments"],
-    queryFn: listMyPayments,
-    staleTime: 0,
-    refetchInterval: (q) =>
-      q.state.data?.some(
-        (p) => p.paymentId === paymentId && p.status === "PENDING",
-      )
-        ? 3000
-        : false,
-  });
+  const query = useMyPayments();
   const ticket = query.data?.find((p) => p.paymentId === paymentId);
   const labels = {
     APPROVED: "예매 확정",
@@ -68,9 +57,9 @@ export default function TicketDetailPage({
             seatIds={ticket.seatIds}
             breakdown={ticket.sectionBreakdown}
             amount={ticket.amount}
-            status={labels[ticket.status]}
+            status={ticket.refundPending ? "환불 처리 중" : labels[ticket.status]}
             tone={
-              ticket.status === "APPROVED"
+              ticket.status === "APPROVED" && !ticket.refundPending
                 ? "success"
                 : ticket.status === "FAILED"
                   ? "error"
@@ -102,9 +91,11 @@ export default function TicketDetailPage({
             ))}
             <div className="data-row border-t border-[color:var(--color-border)] pt-5">
               <span>결제 상태</span>
-              <strong>{labels[ticket.status]}</strong>
+              <strong>{ticket.refundPending ? "환불 처리 중" : labels[ticket.status]}</strong>
             </div>
-            {ticket.status === "FAILED" ? (
+            {ticket.refundPending ? (
+              <Notice title="환불 결과 확인 중">결제사 확인 후 자동으로 갱신됩니다.</Notice>
+            ) : ticket.status === "FAILED" ? (
               <Notice tone="error" title="결제가 완료되지 않았어요.">
                 {ticket.failReason ?? "다른 좌석을 선택해 다시 예매해 주세요."}
               </Notice>

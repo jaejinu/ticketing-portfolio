@@ -30,7 +30,7 @@ import {
   LoginRequestSchema,
 } from '@/lib/api/schemas';
 import { setRefreshCookie } from '@/lib/auth/cookies';
-import { callBackend, jsonError, passthroughError } from '../_backend';
+import { callBackend, clientIpOf, jsonError, passthroughError } from '../_backend';
 
 export const runtime = 'nodejs';
 
@@ -55,6 +55,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     backendRes = await callBackend('/auth/login', {
       method: 'POST',
       json: parsed.data,
+      clientIp: clientIpOf(req),
     });
   } catch {
     // backend 가 죽었거나 네트워크 단절. 사용자 친화적 코드로 변환.

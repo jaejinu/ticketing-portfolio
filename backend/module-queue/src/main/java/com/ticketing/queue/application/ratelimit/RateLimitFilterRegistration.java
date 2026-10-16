@@ -1,6 +1,6 @@
 package com.ticketing.queue.application.ratelimit;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.ticketing.queue.api.scope.RequestScope;
 import com.ticketing.queue.api.ratelimit.RateLimitFilter;
 import com.ticketing.queue.application.QueueProperties;
@@ -47,6 +47,42 @@ public class RateLimitFilterRegistration {
         FilterRegistrationBean<RateLimitFilter> reg = new FilterRegistrationBean<>(filter);
         reg.setName("queueRateLimitFilter");
         reg.setUrlPatterns(List.of("/api/v1/queue/*"));
+        reg.setOrder(ORDER_BEFORE_SECURITY);
+        return reg;
+    }
+
+    /**
+     * 좌석 점유·결제 생성 전용. 대기열만 막으면 봇이 좌석 API 를 직접 두드릴 수 있어 같은 단계에 둔다.
+     * 버킷은 대기열과 분리 — 대기열 상태 폴링이 구매 한도를 깎지 않게.
+     */
+    @Bean
+    public FilterRegistrationBean<RateLimitFilter> purchaseRateLimitFilter(
+            RateLimitService rateLimitService,
+            QueueProperties.RateLimit rateLimit,
+            ObjectMapper objectMapper, RequestScope requestScope) {
+        RateLimitFilter filter = new RateLimitFilter(rateLimitService, rateLimit, objectMapper, requestScope,
+                RateLimitFilter.Group.PURCHASE);
+        FilterRegistrationBean<RateLimitFilter> reg = new FilterRegistrationBean<>(filter);
+        reg.setName("purchaseRateLimitFilter");
+        reg.setUrlPatterns(RateLimitFilter.PURCHASE_PATHS);
+        reg.setOrder(ORDER_BEFORE_SECURITY);
+        return reg;
+    }
+
+    /**
+     * 로그인·가입 전용 IP 단위 제한. 계정 잠금(계정+IP 5회)과 함께 비밀번호 대입을 늦춘다.
+     * 예전엔 인증 API 에 IP·전체 제한이 전혀 없었다 (2026-10-13 QA P1-6).
+     */
+    @Bean
+    public FilterRegistrationBean<RateLimitFilter> authRateLimitFilter(
+            RateLimitService rateLimitService,
+            QueueProperties.RateLimit rateLimit,
+            ObjectMapper objectMapper, RequestScope requestScope) {
+        RateLimitFilter filter = new RateLimitFilter(rateLimitService, rateLimit, objectMapper, requestScope,
+                RateLimitFilter.Group.AUTH);
+        FilterRegistrationBean<RateLimitFilter> reg = new FilterRegistrationBean<>(filter);
+        reg.setName("authRateLimitFilter");
+        reg.setUrlPatterns(RateLimitFilter.AUTH_PATHS);
         reg.setOrder(ORDER_BEFORE_SECURITY);
         return reg;
     }

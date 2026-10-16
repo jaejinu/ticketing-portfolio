@@ -73,3 +73,5 @@ alertmanager_storage:
 limits:
   ingestion_rate: 100000
   out_of_order_time_window: 5m
+  # 보존 7일 — 예전엔 기간이 없어 블록이 계속 쌓였다 (QA P2/P3). compactor 가 지운다.
+  compactor_blocks_retention_period: 7d

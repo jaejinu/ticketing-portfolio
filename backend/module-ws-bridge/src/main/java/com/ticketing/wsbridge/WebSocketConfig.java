@@ -1,6 +1,7 @@
 package com.ticketing.wsbridge;
 
 import com.ticketing.wsbridge.auth.StompAuthChannelInterceptor;
+import com.ticketing.wsbridge.auth.StompDestinationGuard;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.annotation.Value;
 import java.util.Arrays;
@@ -49,20 +50,23 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final StompAuthChannelInterceptor authInterceptor;
+    private final StompDestinationGuard destinationGuard;
 
     private final String[] allowedOrigins;
 
     public WebSocketConfig(StompAuthChannelInterceptor authInterceptor,
+            StompDestinationGuard destinationGuard,
             @Value("${app.auth.cors.allowed-origins:http://localhost:3000,http://localhost:3100,http://localhost:3002}") String origins) {
         this.authInterceptor = authInterceptor;
+        this.destinationGuard = destinationGuard;
         this.allowedOrigins = Arrays.stream(origins.split(",")).map(String::trim)
                 .filter(origin -> !origin.isEmpty()).toArray(String[]::new);
     }
 
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
-        // CONNECT 프레임 검증 + Principal 부착. SUBSCRIBE/SEND 등 후속 프레임에선 이미 부착된 Principal 사용.
-        registration.interceptors(authInterceptor);
+        // CONNECT 프레임 검증 + Principal 부착 → 이후 SEND 차단·SUBSCRIBE 허용 목록.
+        registration.interceptors(authInterceptor, destinationGuard);
     }
 
     @Override
@@ -80,7 +84,10 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
-        registry.enableSimpleBroker("/topic", "/user");
+        // /user/queue/x 는 UserDestinationMessageHandler 가 /queue/x-user{세션} 으로 바꿔 브로커로 넘긴다.
+        // 브로커가 /queue 를 처리하지 않으면 결제·알림 개인 메시지가 조용히 버려진다(2026-10-13 확인).
+        // 바뀐 목적지를 클라이언트가 직접 구독하는 것은 StompDestinationGuard 가 막는다.
+        registry.enableSimpleBroker("/topic", "/queue");
         registry.setApplicationDestinationPrefixes("/app");
         registry.setUserDestinationPrefix("/user");
     }

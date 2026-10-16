@@ -1,28 +1,11 @@
 "use client";
-import { useEffect } from "react";
 import Link from "next/link";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { listMyPayments } from "@/lib/api/payments";
-import { subscribe } from "@/lib/stomp/client";
+import { useMyPayments } from "@/lib/query/useMyPayments";
 import { TicketSummary } from "@/components/booking/TicketSummary";
 import { Notice } from "@/components/ui/Notice";
 import { Button } from "@/components/ui/Button";
 export default function MyTicketsPage() {
-  const client = useQueryClient();
-  const query = useQuery({
-    queryKey: ["my-payments"],
-    queryFn: listMyPayments,
-    staleTime: 10_000,
-    refetchInterval: (q) =>
-      q.state.data?.some((p) => p.status === "PENDING") ? 3000 : false,
-  });
-  useEffect(() => {
-    const sub = subscribe(
-      "/user/queue/payments",
-      () => void client.invalidateQueries({ queryKey: ["my-payments"] }),
-    );
-    return () => sub?.unsubscribe();
-  }, [client]);
+  const query = useMyPayments();
   const labels = {
     APPROVED: "예매 확정",
     PENDING: "결제 진행 중",
@@ -69,14 +52,17 @@ export default function MyTicketsPage() {
               breakdown={p.sectionBreakdown}
               seatIds={p.seatIds}
               tone={
-                p.status === "APPROVED"
+                p.status === "APPROVED" && !p.refundPending
                   ? "success"
                   : p.status === "FAILED"
                     ? "error"
                     : "neutral"
               }
-              status={labels[p.status]}
+              status={p.refundPending ? "환불 처리 중" : labels[p.status]}
             >
+              {p.refundPending && (
+                <Notice title="환불 결과 확인 중">결제사 확인 후 자동으로 갱신됩니다.</Notice>
+              )}
               {p.status === "FAILED" && (
                 <Notice tone="error" title="결제 실패">
                   {p.failReason ?? "결제를 완료하지 못했습니다."}

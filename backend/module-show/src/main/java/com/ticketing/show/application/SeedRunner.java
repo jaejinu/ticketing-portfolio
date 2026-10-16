@@ -11,12 +11,15 @@ import com.ticketing.show.domain.Show;
 import com.ticketing.show.domain.ShowRepository;
 import com.ticketing.show.domain.ShowSchedule;
 import com.ticketing.show.domain.ShowScheduleRepository;
+import com.ticketing.show.domain.ShowScheduleStatus;
 import com.ticketing.show.domain.ShowStatus;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -125,6 +128,7 @@ public class SeedRunner {
     private final boolean enabled;
     private final boolean startOnSale;
     private final String organizerPasswordHash;
+    private final org.springframework.transaction.support.TransactionTemplate tx;
 
     public SeedRunner(UserRepository userRepository,
                       ShowRepository showRepository,
@@ -133,7 +137,9 @@ public class SeedRunner {
                       SeatRepository seatRepository,
                       @Value("${app.show.seed.enabled:false}") boolean enabled,
                       @Value("${app.show.seed.start-on-sale:false}") boolean startOnSale,
-                      @Value("${app.show.seed.organizer-password-hash:}") String organizerPasswordHash) {
+                      @Value("${app.show.seed.organizer-password-hash:}") String organizerPasswordHash,
+                      org.springframework.transaction.PlatformTransactionManager transactionManager) {
+        this.tx = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
         this.userRepository = userRepository;
         this.showRepository = showRepository;
         this.scheduleRepository = scheduleRepository;
@@ -237,6 +243,51 @@ public class SeedRunner {
      *                   1000원 단위로 반올림해 "실제 티켓 가격" 처럼 보이게 한다.
      * @return 생성한 좌석 수 (= 400)
      */
+    /**
+     * 데모 공연에 다가오는 회차가 하나도 남지 않으면 일주일 뒤 회차를 새로 만든다.
+     *
+     * <p>
+     *   시드 회차 날짜는 시드 시점 기준이라, 지난 회차 자동 종료({@link ScheduleAutoCloseJob})가 켜지면
+     *   몇 주 뒤 공개 데모에 살 수 있는 공연이 없어진다. 지난 회차는 그대로 두고(예매·결제 기록 보존)
+     *   새 회차만 더한다. 데모 주최자의 카탈로그 공연만 대상 — 콘솔에서 만든 공연은 건드리지 않는다.
+     * </p>
+     */
+    @Scheduled(fixedDelayString = "${app.show.seed.roll-forward-interval:PT1H}", initialDelayString = "PT2M")
+    @SchedulerLock(name = "demo-schedule-roll-forward", lockAtMostFor = "PT5M")
+    public void scheduledRollForward() {
+        // ShedLock 은 값을 돌려주는 메서드를 잠그지 못한다 — void 로 감싸고, 좌석 수 반영에 트랜잭션이
+        // 필요해 TransactionTemplate 안에서 돈다(같은 클래스 안 호출은 @Transactional 프록시를 안 탄다).
+        tx.executeWithoutResult(status -> rollForwardDemoSchedules());
+    }
+
+    @Transactional
+    public int rollForwardDemoSchedules() {
+        if (!enabled) return 0;
+        Optional<User> organizer = userRepository.findByEmail(DEMO_ORGANIZER_EMAIL);
+        if (organizer.isEmpty()) return 0;
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        int created = 0;
+        for (Show show : showRepository.findByOrganizerIdOrderByCreatedAtDesc(organizer.get().getId())) {
+            Optional<DemoShow> demo = CATALOG.stream().filter(d -> d.title().equals(show.getTitle())).findFirst();
+            if (demo.isEmpty() || show.getStatus() != ShowStatus.PUBLISHED) continue;
+            boolean hasUpcoming = scheduleRepository.findByShowIdOrderByStartsAtAsc(show.getId()).stream()
+                    .anyMatch(s -> s.getStatus() != ShowScheduleStatus.CLOSED && s.getStartsAt().isAfter(now));
+            if (hasUpcoming) continue;
+
+            OffsetDateTime startsAt = now.plusDays(7).withHour(10).withMinute(0).withSecond(0).withNano(0);
+            ShowSchedule schedule = ShowSchedule.create(show.getId(), startsAt, startsAt.plusHours(2),
+                    startsAt.minusDays(3).withHour(5));
+            if (startOnSale && demo.get().openFirstSchedule()) {
+                schedule.markOnSale();
+            }
+            ShowSchedule managed = scheduleRepository.save(schedule);
+            seedSectionsAndSeats(managed, demo.get().priceScale());
+            created++;
+            log.info("[seed] 데모 공연 '{}' 에 새 회차를 만들었습니다: {}", show.getTitle(), startsAt);
+        }
+        return created;
+    }
+
     private int seedSectionsAndSeats(ShowSchedule schedule, double priceScale) {
         // saveAll 반환값(관리 인스턴스들)을 써야 아래 addSeatCount 가 DB 에 반영된다 — 위 merge 주석 참고.
         List<Section> sections = sectionRepository.saveAll(List.of(

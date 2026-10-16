@@ -77,6 +77,28 @@ public class Payment {
     @Column(name = "cancel_requested", nullable = false)
     private boolean cancelRequested;
 
+    @Column(name = "refund_requested", nullable = false)
+    private boolean refundRequested;
+    @Column(name = "refund_actor_id")
+    private UUID refundActorId;
+    @Column(name = "refund_reason")
+    private String refundReason;
+
+    public void requestRefund(UUID actorId, String reason) {
+        if (!PaymentStatus.APPROVED.equals(status)) throw new BusinessException(ErrorCode.PAYMENT_ALREADY_SETTLED);
+        if (!refundRequested) {
+            refundRequested = true;
+            refundActorId = actorId;
+            refundReason = reason;
+        }
+    }
+    public boolean isRefundPending() { return refundRequested && PaymentStatus.APPROVED.equals(status); }
+    public boolean ownsRefund(UUID token) {
+        return isRefundPending() && token != null && token.equals(processingToken);
+    }
+    public UUID getRefundActorId() { return refundActorId; }
+    public String getRefundReason() { return refundReason; }
+
     protected Payment() {
     }
 

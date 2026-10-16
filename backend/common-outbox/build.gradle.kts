@@ -24,7 +24,7 @@ dependencies {
     // 엔티티 + Repository
     implementation(libs.spring.boot.starter.data.jpa)
     // Publisher 가 KafkaTemplate 사용
-    implementation(libs.spring.kafka)
+    implementation(libs.spring.boot.starter.kafka)
     // @ConfigurationProperties / @Scheduled / Validation 등은 기본 starter 에 포함
     implementation(libs.spring.boot.starter)
     // 메트릭 (seat.outbox.* 와 동일 카탈로그를 다른 도메인도 사용)
@@ -33,6 +33,6 @@ dependencies {
     implementation(libs.shedlock.spring)
 
     runtimeOnly(libs.postgresql)
-    implementation(libs.flyway.core)
+    implementation(libs.spring.boot.starter.flyway)
     runtimeOnly(libs.flyway.postgresql)
 }

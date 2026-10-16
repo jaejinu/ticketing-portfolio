@@ -1,7 +1,7 @@
 package com.ticketing.wsbridge.consumer;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import com.ticketing.events.Envelope;
 import com.ticketing.events.Topics;
 import com.ticketing.wsbridge.dedup.ProcessedEventCache;
@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 import java.util.UUID;
 
 /**
- * PAYMENT_APPROVED / PAYMENT_FAILED Kafka 이벤트 → 사용자별 STOMP fanout.
+ * PAYMENT_APPROVED / PAYMENT_FAILED / PAYMENT_REFUNDED Kafka 이벤트 → 사용자별 STOMP fanout.
  *
  * <h2>흐름</h2>
  * <pre>
@@ -60,19 +60,31 @@ public class PaymentEventConsumer {
 
     @KafkaListener(
             topics = Topics.PAYMENT_APPROVED,
-            groupId = "${app.ws-bridge.consumer-group}")
+            groupId = "#{@wsBridgeGroupId}",
+            // 인스턴스별 새 그룹이 지난 이벤트를 처음부터 다시 보내지 않게 — 실시간 전달만.
+            properties = "auto.offset.reset=latest")
     public void onApproved(String payload) {
         handle(payload);
     }
 
     @KafkaListener(
             topics = Topics.PAYMENT_FAILED,
-            groupId = "${app.ws-bridge.consumer-group}")
+            groupId = "#{@wsBridgeGroupId}",
+            // 인스턴스별 새 그룹이 지난 이벤트를 처음부터 다시 보내지 않게 — 실시간 전달만.
+            properties = "auto.offset.reset=latest")
     public void onFailed(String payload) {
         handle(payload);
     }
 
-    /** 공통 처리 — Envelope.type 으로 분기 (PAYMENT_APPROVED/PAYMENT_FAILED). */
+    @KafkaListener(
+            topics = Topics.PAYMENT_REFUNDED,
+            groupId = "#{@wsBridgeGroupId}",
+            properties = "auto.offset.reset=latest")
+    public void onRefunded(String payload) {
+        handle(payload);
+    }
+
+    /** 승인·실패·환불 결과를 구매자 개인 채널로 전달한다. */
     void handle(String raw) {
         Envelope envelope;
         try {

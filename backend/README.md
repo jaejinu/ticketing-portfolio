@@ -1,4 +1,4 @@
-# backend — Spring Boot 3 모듈러 모놀리스
+# backend — Spring Boot 4 모듈러 모놀리스
 
 > 다이나믹 프라이싱 티켓팅의 백엔드. Gradle 멀티모듈 + 단일 부트런(app-gateway).
 
@@ -7,19 +7,23 @@
 | 모듈 | 책임 |
 | --- | --- |
 | `app-gateway` | 단일 부트런 진입점. 모든 모듈을 import 해서 REST + WebSocket 서비스. |
-| `module-auth` | 회원 / RS256 JWT / 계정 잠금 |
+| `module-auth` | 회원 / RS256 JWT / 계정 잠금 / 역할·세션 관리 / 감사 기록 |
 | `module-show` | 공연·회차·구역 (주최자 백엔드) |
 | `module-queue` | 가상 대기열 + Bucket4j 레이트리밋 + 매크로 탐지 |
 | `module-seat` | 좌석 점유 분산락 (Redisson) |
-| `module-payment-saga` | 결제 Saga + Outbox + Idempotency + Mock PG 호출 |
+| `module-payment-saga` | 결제 Saga + Outbox + 멱등 처리·복구 + Mock PG + 관리자 환불 |
 | `module-pricing` | Kafka Streams 가격 산출 + TimescaleDB 적재 |
 | `module-alert` | 가격 알람 CRUD + 평가 + 발송 |
 | `module-ws-bridge` | Kafka → STOMP 팬아웃 |
-| `common-outbox` | DB 트랜잭션 내 이벤트 기록과 Kafka 폴링 발행 |
+| `common-outbox` | DB 트랜잭션 내 이벤트 기록, Kafka 폴링 발행, 실패 이벤트 재발행 |
 | `common-events` | 이벤트 envelope, 토픽 상수 |
 | `common-domain` | 공통 예외, 시계 빈, 도메인 공통 |
 
 ## 빌드 / 실행
+
+JDK 21을 사용한다. 로컬 개발은 저장소 루트에서 `make up` → `make backend`를 권장한다.
+`make backend`는 `infra/.env`의 DB·Redis 설정을 읽고, Gradle `bootRun`은 프로필 미지정 시 `local`을 선택한다.
+JAR을 직접 실행할 때는 기본 프로필이 없으므로 `SPRING_PROFILES_ACTIVE`를 명시해야 한다.
 
 ```bash
 # 컴파일 + 테스트 제외 빌드 (인프라 없어도 통과)
@@ -40,8 +44,9 @@
 | 변수 | 기본값 | 설명 |
 | --- | --- | --- |
 | `DB_URL` | `jdbc:postgresql://localhost:5440/ticketing` | PostgreSQL JDBC URL |
-| `DB_USER` / `DB_PASSWORD` | `ticket` / `ticket` | PG 계정 |
+| `DB_USER` / `DB_PASSWORD` | `ticket` / `POSTGRES_PASSWORD` 환경 변수, 없으면 `ticket` | `make backend`는 `infra/.env`에서 생성된 비밀번호를 읽음 |
 | `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6390` | Redis |
+| `SPRING_DATA_REDIS_PASSWORD` | 미설정 | `make backend`가 `infra/.env`의 `REDIS_PASSWORD`를 전달 |
 | `KAFKA_BOOTSTRAP` | `localhost:9092` | Kafka broker |
 | `JWT_PRIVATE_KEY_PATH` / `JWT_PUBLIC_KEY_PATH` | `./backend/module-auth/src/main/resources/keys/jwt-*.pem` | RS256 키 페어 경로 |
 | `FCM_PROJECT_ID`, `FCM_MODE` | — / `mock` | FCM 프로젝트 / mock 여부 |
@@ -80,7 +85,7 @@
 
 - 각 모듈의 `src/main/resources/db/migration/`을 하나의 Flyway 이력으로 실행한다.
 - **버전 번호는 전체 모듈에서 유일해야 한다.** 파일명 접미사가 달라도 같은 `V001`을 재사용할 수 없다.
-- 기존 번호는 V001~V011이다. 추가 전에 전체 모듈의 마이그레이션을 확인하고 다음 미사용 번호를 선택한다.
+- 현재 번호는 V001~V015이다(V012 Outbox 인덱스, V013 관리자 감사 기록, V014 결제 유일 인덱스·외래키, V015 환불 복구 의도·조회 인덱스 포함). 추가 전에 전체 모듈의 마이그레이션을 확인하고 다음 미사용 번호를 선택한다.
 - 적용된 SQL은 수정하지 않고 새 버전으로 변경한다.
 - V009는 `pg_extension`에서 TimescaleDB 존재 여부를 확인한 뒤 hypertable·캔들 집계를 생성한다.
   일반 PostgreSQL 테스트에서는 이 부분을 건너뛴다.

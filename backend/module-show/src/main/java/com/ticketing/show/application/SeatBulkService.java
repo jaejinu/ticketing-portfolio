@@ -14,7 +14,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -35,6 +37,8 @@ import java.util.UUID;
 public class SeatBulkService {
 
     private static final int MAX_SEATS_PER_REQUEST = 5_000;
+    /** seats.row_label 컬럼 길이 (V003__shows.sql: VARCHAR(5)). */
+    private static final int MAX_ROW_LABEL_LENGTH = 5;
 
     private final ShowRepository showRepository;
     private final ShowScheduleRepository scheduleRepository;
@@ -58,10 +62,23 @@ public class SeatBulkService {
         if (cols <= 0) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "cols 는 양수여야 합니다. 입력=" + cols);
         }
-        int total = rows.size() * cols;
-        if (total > MAX_SEATS_PER_REQUEST) {
+        // long 으로 곱한다. int 곱셈은 넘쳐서(예: 3 × 1,431,655,766 = 2) 상한을 통과한 뒤
+        // 수십억 개 객체를 만들다 OutOfMemoryError 로 서버 전체를 멈췄다 (2026-10-13 QA 실측).
+        long requested = (long) rows.size() * cols;
+        if (requested > MAX_SEATS_PER_REQUEST) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST,
-                    "한 번에 등록 가능한 좌석 수를 초과했습니다. max=" + MAX_SEATS_PER_REQUEST + " 요청=" + total);
+                    "한 번에 등록 가능한 좌석 수를 초과했습니다. max=" + MAX_SEATS_PER_REQUEST + " 요청=" + requested);
+        }
+        int total = (int) requested;
+        Set<String> distinctRows = new HashSet<>();
+        for (String row : rows) {
+            if (row == null || row.isBlank() || row.length() > MAX_ROW_LABEL_LENGTH) {
+                throw new BusinessException(ErrorCode.INVALID_REQUEST,
+                        "행 이름은 1~" + MAX_ROW_LABEL_LENGTH + "자여야 합니다. 입력=" + row);
+            }
+            if (!distinctRows.add(row)) {
+                throw new BusinessException(ErrorCode.INVALID_REQUEST, "행 이름이 중복되었습니다. 입력=" + row);
+            }
         }
 
         Section section = sectionRepository.findById(sectionId)
@@ -70,11 +87,20 @@ public class SeatBulkService {
         ShowSchedule schedule = scheduleRepository.findById(section.getShowScheduleId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND,
                         "회차를 찾을 수 없습니다."));
+        SectionCommandService.requireSeatMapEditable(schedule);
         Show show = showRepository.findById(schedule.getShowId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.SHOW_NOT_FOUND,
                         "공연을 찾을 수 없습니다."));
         if (!show.getOrganizerId().equals(organizerId)) {
             throw new BusinessException(ErrorCode.SHOW_ACCESS_DENIED, "본인 소유 공연이 아닙니다.");
+        }
+
+        // 이미 있는 행에 다시 등록하면 DB unique 제약이 500 으로 터진다 — 미리 400 으로 알린다.
+        for (Seat existing : seatRepository.findBySectionId(sectionId)) {
+            if (distinctRows.contains(existing.getRowLabel())) {
+                throw new BusinessException(ErrorCode.INVALID_REQUEST,
+                        "이미 좌석이 있는 행입니다. 행=" + existing.getRowLabel());
+            }
         }
 
         List<Seat> seats = new ArrayList<>(total);

@@ -8,8 +8,8 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.autoconfigure.domain.EntityScan;
-import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
+import org.springframework.boot.persistence.autoconfigure.EntityScan;
+import org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -21,13 +21,16 @@ import static org.mockito.Mockito.mock;
 
 @SpringBootConfiguration
 @EnableAutoConfiguration(exclude = SecurityAutoConfiguration.class,
-        excludeName = "org.redisson.spring.starter.RedissonAutoConfigurationV2")
+        excludeName = {"org.redisson.spring.starter.RedissonAutoConfigurationV2",
+                "org.redisson.spring.starter.RedissonAutoConfigurationV4"})
 @EntityScan({"com.ticketing.paymentsaga.domain", "com.ticketing.seat.domain", "com.ticketing.show.domain",
         "com.ticketing.auth.domain", "com.ticketing.outbox"})
 @EnableJpaRepositories({"com.ticketing.paymentsaga.domain", "com.ticketing.seat.domain", "com.ticketing.show.domain",
         "com.ticketing.auth.domain", "com.ticketing.outbox"})
 @EnableConfigurationProperties({PaymentProperties.class, SeatHoldProperties.class})
-@Import({PaymentSagaService.class, SeatHoldService.class, SeatHoldViewService.class, OutboxWriter.class})
+@Import({PaymentSagaService.class, SeatHoldService.class, SeatHoldViewService.class, OutboxWriter.class,
+        PaymentRefundService.class, com.ticketing.auth.audit.AuditRecorder.class,
+        com.ticketing.auth.security.ClientIpResolver.class, com.ticketing.common.web.ApiErrorAdvice.class})
 public class PaymentIntegrationTestApp {
     @Bean Clock clock() { return Clock.systemUTC(); }
     @Bean MeterRegistry meterRegistry() { return new SimpleMeterRegistry(); }

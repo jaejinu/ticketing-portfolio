@@ -25,17 +25,23 @@ public class ScheduleCommandService {
 
     private final ShowRepository showRepository;
     private final ShowScheduleRepository scheduleRepository;
+    private final java.time.Clock clock;
 
     public ScheduleCommandService(ShowRepository showRepository,
-                                  ShowScheduleRepository scheduleRepository) {
+                                  ShowScheduleRepository scheduleRepository,
+                                  java.time.Clock clock) {
         this.showRepository = showRepository;
         this.scheduleRepository = scheduleRepository;
+        this.clock = clock;
     }
 
     public ShowSchedule addSchedule(UUID organizerId, UUID showId,
                                     OffsetDateTime startsAt, OffsetDateTime endsAt,
                                     OffsetDateTime salesStartAt) {
         Show show = loadOwnedShow(organizerId, showId);
+        if (show.getStatus() == com.ticketing.show.domain.ShowStatus.CLOSED) {
+            throw new BusinessException(ErrorCode.INVALID_SHOW_STATE, "종료된 공연에는 회차를 추가할 수 없습니다.");
+        }
         ShowSchedule schedule = ShowSchedule.create(show.getId(), startsAt, endsAt, salesStartAt);
         return scheduleRepository.save(schedule);
     }
@@ -44,7 +50,7 @@ public class ScheduleCommandService {
                                        OffsetDateTime startsAt, OffsetDateTime endsAt,
                                        OffsetDateTime salesStartAt) {
         ShowSchedule schedule = loadOwnedSchedule(organizerId, scheduleId);
-        schedule.updateSchedule(startsAt, endsAt, salesStartAt);
+        schedule.updateSchedule(startsAt, endsAt, salesStartAt, OffsetDateTime.now(clock));
         return schedule;
     }
 
@@ -58,6 +64,14 @@ public class ScheduleCommandService {
      */
     public ShowSchedule open(UUID organizerId, UUID scheduleId) {
         ShowSchedule schedule = loadOwnedSchedule(organizerId, scheduleId);
+        // 비공개·종료 공연이나 좌석이 없는 회차는 판매를 열지 않는다 — 대기열이 영원히 도는 회차가 생겼다.
+        Show show = showRepository.findById(schedule.getShowId()).orElseThrow();
+        if (show.getStatus() != com.ticketing.show.domain.ShowStatus.PUBLISHED) {
+            throw new BusinessException(ErrorCode.INVALID_SHOW_STATE, "공개된 공연만 판매를 열 수 있습니다. 현재=" + show.getStatus());
+        }
+        if (schedule.getSeatTotal() <= 0) {
+            throw new BusinessException(ErrorCode.INVALID_SHOW_STATE, "좌석이 없는 회차는 판매를 열 수 없습니다.");
+        }
         schedule.markOnSale();
         return schedule;
     }

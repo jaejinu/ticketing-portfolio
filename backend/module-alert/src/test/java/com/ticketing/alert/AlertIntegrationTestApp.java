@@ -1,10 +1,11 @@
 package com.ticketing.alert;
 
 import com.ticketing.common.time.AppClock;
+import com.ticketing.common.web.ApiErrorAdvice;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.autoconfigure.mail.MailSenderAutoConfiguration;
+import org.springframework.boot.mail.autoconfigure.MailSenderAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -43,7 +44,7 @@ import java.util.Map;
         },
         exclude = { MailSenderAutoConfiguration.class }
 )
-@Import(AppClock.class)
+@Import({AppClock.class, ApiErrorAdvice.class})
 public class AlertIntegrationTestApp {
 
     @Bean

@@ -1,7 +1,7 @@
 package com.ticketing.wsbridge.consumer;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import com.ticketing.events.Envelope;
 import com.ticketing.events.Topics;
 import com.ticketing.wsbridge.dedup.ProcessedEventCache;
@@ -57,7 +57,9 @@ public class PricingEventConsumer {
 
     @KafkaListener(
             topics = Topics.PRICING_TICK,
-            groupId = "${app.ws-bridge.consumer-group}")
+            groupId = "#{@wsBridgeGroupId}",
+            // 인스턴스별 새 그룹이 지난 이벤트를 처음부터 다시 보내지 않게 — 실시간 전달만.
+            properties = "auto.offset.reset=latest")
     public void onPricingTick(String payload) {
         handle(payload);
     }

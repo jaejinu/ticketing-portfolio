@@ -1,7 +1,7 @@
 package com.ticketing.paymentsaga.api;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 import com.ticketing.auth.security.AuthPrincipal;
 import com.ticketing.auth.security.AuthenticatedUser;
 import com.ticketing.common.error.BusinessException;
@@ -63,7 +63,7 @@ public class PaymentController {
         String bodyJson;
         try {
             bodyJson = objectMapper.writeValueAsString(req);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalStateException("결제 요청 직렬화 실패", e);
         }
         Payment p = sagaService.pay(me.userId(), req.holdId(), req.amount(),

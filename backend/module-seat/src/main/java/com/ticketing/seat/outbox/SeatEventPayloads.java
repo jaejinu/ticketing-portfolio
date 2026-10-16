@@ -3,10 +3,10 @@ package com.ticketing.seat.outbox;
 // SeatEventPayloads 만 본 패키지에 남는다 — 도메인 특화 페이로드 빌더.
 // 공용 인프라(OutboxRecord/Writer/Publisher) 는 common-outbox 모듈로 이동됨.
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 import com.ticketing.seat.domain.SeatHold;
 
 import java.util.UUID;

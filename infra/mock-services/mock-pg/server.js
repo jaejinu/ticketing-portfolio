@@ -28,9 +28,11 @@ function createApp(store) {
         return res.status(400).json({ code: 'INVALID_REQUEST' });
       }
       let order = store.pay(orderId, amount);
-      if (order.status === 'PENDING') {
-        // Decision is already durable. A disconnected caller can later GET its outcome.
-        await new Promise(resolve => setTimeout(resolve, Math.max(0, order.readyAt - store.now())));
+      // Decision is already durable. A disconnected caller can later GET its outcome.
+      // Loop instead of a single sleep: timers may fire slightly before readyAt, and replying
+      // PENDING (409) for an order that approves a millisecond later breaks idempotent retries.
+      while (order?.status === 'PENDING') {
+        await new Promise(resolve => setTimeout(resolve, Math.max(1, order.readyAt - store.now())));
         order = store.get(orderId);
       }
       const status = order.status === 'APPROVED' ? 200 : order.status === 'DECLINED' ? 402 : 409;

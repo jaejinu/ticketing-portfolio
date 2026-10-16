@@ -14,7 +14,8 @@ public record PaymentResponse(
         String pgTxnId,
         String failCode,
         String failReason,
-        OffsetDateTime createdAt
+        OffsetDateTime createdAt,
+        boolean refundPending
 ) {
 
     public static PaymentResponse of(Payment p) {
@@ -27,7 +28,8 @@ public record PaymentResponse(
                 p.getPgTxnId(),
                 p.getFailCode(),
                 p.getFailReason(),
-                p.getCreatedAt()
+                p.getCreatedAt(),
+                p.isRefundPending()
         );
     }
 }

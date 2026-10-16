@@ -26,8 +26,8 @@ import java.util.UUID;
  *   auth:refresh:lookup:{tokenValue}  →  "{userId}:{tokenId}"
  *                                        TTL = 14d  (토큰값→소유자 역인덱스, O(1) 조회)
  *
- *   auth:refresh:used:{tokenId}       →  "1"
- *                                        TTL = 1h  (rotation 직후 grace period)
+ *   auth:refresh:used:{tokenId}       →  "{rotatedAtEpochMs}|{newTokenValue}"
+ *                                        TTL = refresh-token-ttl (lookup 과 같은 수명)
  *                                        존재 = 이 토큰은 이미 회전되었음 → 재사용 시 탈취 의심.
  * </pre>
  *
@@ -36,7 +36,15 @@ import java.util.UUID;
  * 이 불가능하다. opaque 값은 Redis 에 키로 존재할 때만 유효 → 무효화/회전 트리비얼.
  *
  * <h2>회전 정책 (rotation)</h2>
- * refresh 요청마다 새 토큰을 발급하고 기존 토큰을 1시간 동안 "used" 마킹.
+ * refresh 요청마다 새 토큰을 발급하고 기존 토큰을 lookup 과 같은 수명 동안 "used" 마킹.
+ *
+ * <h2>왜 used 마킹이 lookup 만큼 살아야 하는가 (2026-10-13 QA)</h2>
+ * <p>
+ *   예전엔 used 마킹이 1시간, lookup 은 14일이었다. 1시간이 지나면 used 가 사라지고 lookup 만 남아
+ *   회전된 옛 토큰이 다시 회전에 성공했다 — 훔친 옛 토큰이 14일간 살아 있던 셈.
+ *   지금은 (1) used 마킹이 lookup 과 같은 수명이고, (2) used 가 없더라도 토큰 자체 레코드가
+ *   없으면 거절한다. 둘 중 하나만 있어도 옛 토큰은 되살아나지 않는다.
+ * </p>
  * <ul>
  *   <li>정상 클라이언트: grace 안에 다른 refresh 가 들어와도 한 번은 통과(네트워크 재시도 등 허용).</li>
  *   <li>탈취 케이스: 공격자가 옛 토큰을 보내면 "used" 마킹이 살아있으므로 즉시 탐지 →
@@ -57,8 +65,6 @@ public class RefreshTokenStore {
     private static final String KEY_LOOKUP  = "auth:refresh:lookup:%s";   // tokenValue
     private static final String KEY_USED    = "auth:refresh:used:%s";     // tokenId
 
-    private static final Duration USED_GRACE = Duration.ofHours(1);
-
     /**
      * 회전 직후 "옛 토큰 재사용" 을 탈취가 아닌 동시 요청 레이스로 간주하는 유예 시간.
      *
@@ -68,7 +74,8 @@ public class RefreshTokenStore {
      *   "로그인이 랜덤하게 풀리는" 오탐이 된다(2026-07-29 QA 에서 실제 발생).
      *   유예 안의 재사용에는 이미 회전된 "같은 결과" 를 멱등 반환하고,
      *   유예를 넘긴 재사용만 진짜 탈취 신호로 취급한다.
-     *   기본 10초: 정상 레이스(수십~수백 ms)의 수백 배 여유이면서, 탈취 감지 지연으로는 무시 가능.
+     *   기본 3초: 정상 레이스(수십~수백 ms)에는 충분하다. 이 시간 안에 옛 토큰을 내면 새 토큰을
+     *   돌려받으므로(=재사용 창) 길게 두지 않는다. 예전 10초에서 줄였다(2026-10-13 QA).
      *   설정 키 {@code app.auth.jwt.rotation-race-grace} — 테스트가 짧게 줄여 만료 경로를 검증한다.
      * </p>
      */
@@ -81,7 +88,7 @@ public class RefreshTokenStore {
     public RefreshTokenStore(
             StringRedisTemplate redis,
             @Value("${app.auth.jwt.refresh-token-ttl:P14D}") Duration ttl,
-            @Value("${app.auth.jwt.rotation-race-grace:PT10S}") Duration rotationRaceGrace,
+            @Value("${app.auth.jwt.rotation-race-grace:PT3S}") Duration rotationRaceGrace,
             Clock clock) {
         this.redis = redis;
         this.ttl = ttl;
@@ -138,7 +145,8 @@ public class RefreshTokenStore {
         String usedValue = redis.opsForValue().get(usedKey);
         if (usedValue != null) {
             Rotated raceResult = parseGraceResult(owned.userId, usedValue);
-            if (raceResult != null) {
+            // 유예 안이라도 그 사이 새 토큰이 로그아웃·폐기됐다면 돌려주지 않는다.
+            if (raceResult != null && isLive(raceResult.newTokenValue())) {
                 // 유예 내 재사용 = 동시 rotation 레이스 — 같은 새 토큰을 멱등 반환.
                 log.debug("[auth] rotation race within grace — returning same result userId={}", owned.userId);
                 return raceResult;
@@ -148,16 +156,23 @@ public class RefreshTokenStore {
             throw new BusinessException(ErrorCode.REFRESH_REUSE_DETECTED);
         }
 
+        // 토큰 자체 레코드가 없으면(로그아웃·전 세션 폐기·구버전 마킹 만료) 거절한다.
+        // lookup 만 남은 상태로 회전을 허락하면 옛 토큰이 되살아난다.
+        if (!Boolean.TRUE.equals(redis.hasKey(KEY_REFRESH.formatted(owned.userId, owned.tokenId)))) {
+            redis.delete(KEY_LOOKUP.formatted(oldTokenValue));
+            throw new BusinessException(ErrorCode.INVALID_REFRESH);
+        }
+
         // 새 토큰을 먼저 발급하고, used 마킹에 회전 시각+새 토큰을 함께 기록한다
         // (유예 내 레이스가 같은 결과를 돌려받을 수 있도록). 기존 refresh 키는 즉시 삭제.
         // lookup 키는 일부러 그대로 둔다 — 옛 토큰 재사용 시 위 used 체크가 동작하도록.
-        // lookup 키는 자체 TTL 로 자동 만료.
+        // lookup·used 모두 refresh TTL 로 같이 만료된다.
         // 한계(명시): used 체크→마킹이 원자적이지 않아 수 ms 내 완전 동시 호출은 둘 다
         // 발급에 성공할 수 있다 — 낙오된 토큰은 사용되지 않고 TTL 로 소멸하므로 무해하고,
         // 프론트 Next 서버의 rotation single-flight 가 1차로 이 경우를 제거한다.
         String newTokenValue = issueInternal(owned.userId, owned.tokenId);
         redis.opsForValue().set(usedKey,
-                clock.millis() + "|" + newTokenValue, USED_GRACE);
+                clock.millis() + "|" + newTokenValue, ttl);
         redis.delete(KEY_REFRESH.formatted(owned.userId, owned.tokenId));
 
         return new Rotated(owned.userId, newTokenValue);
@@ -182,6 +197,13 @@ public class RefreshTokenStore {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    /** 토큰 값이 아직 유효한 레코드를 가리키는지 (lookup + 레코드 둘 다 존재). */
+    private boolean isLive(String tokenValue) {
+        return lookup(tokenValue)
+                .map(o -> Boolean.TRUE.equals(redis.hasKey(KEY_REFRESH.formatted(o.userId, o.tokenId))))
+                .orElse(false);
     }
 
     // ---- 로그아웃 ------------------------------------------------------------

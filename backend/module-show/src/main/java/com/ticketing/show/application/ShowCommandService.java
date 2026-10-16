@@ -21,9 +21,12 @@ import java.util.UUID;
 public class ShowCommandService {
 
     private final ShowRepository showRepository;
+    private final com.ticketing.show.domain.ShowScheduleRepository scheduleRepository;
 
-    public ShowCommandService(ShowRepository showRepository) {
+    public ShowCommandService(ShowRepository showRepository,
+                              com.ticketing.show.domain.ShowScheduleRepository scheduleRepository) {
         this.showRepository = showRepository;
+        this.scheduleRepository = scheduleRepository;
     }
 
     public Show create(UUID organizerId, String title, String venue, String description, String posterUrl) {
@@ -40,6 +43,13 @@ public class ShowCommandService {
 
     public Show publish(UUID organizerId, UUID showId) {
         Show show = loadOwned(organizerId, showId);
+        // 좌석이 있는 회차가 하나도 없으면 공개해도 살 수 있는 게 없다 (예전엔 빈 공연이 목록에 떴다).
+        boolean hasSeats = scheduleRepository.findByShowIdOrderByStartsAtAsc(showId).stream()
+                .anyMatch(s -> s.getStatus() != com.ticketing.show.domain.ShowScheduleStatus.CLOSED
+                        && s.getSeatTotal() > 0);
+        if (!hasSeats && show.getStatus() == com.ticketing.show.domain.ShowStatus.DRAFT) {
+            throw new BusinessException(ErrorCode.INVALID_SHOW_STATE, "좌석이 등록된 회차가 있어야 공개할 수 있습니다.");
+        }
         show.publish();
         return show;
     }
@@ -47,6 +57,12 @@ public class ShowCommandService {
     public Show close(UUID organizerId, UUID showId) {
         Show show = loadOwned(organizerId, showId);
         show.close();
+        // 공연을 닫으면 회차도 닫는다. 예전엔 회차가 ON_SALE 로 남아 대기열에 줄을 설 수 있었다.
+        for (com.ticketing.show.domain.ShowSchedule schedule : scheduleRepository.findByShowIdOrderByStartsAtAsc(showId)) {
+            if (schedule.getStatus() != com.ticketing.show.domain.ShowScheduleStatus.CLOSED) {
+                schedule.markClosed();
+            }
+        }
         return show;
     }
 

@@ -54,27 +54,40 @@ public class LoginService {
         this.clock = clock;
     }
 
+    /**
+     * 없는 계정에도 BCrypt 비교를 한 번 해서 응답 시간을 맞춘다. 예전엔 없는 이메일 약 3ms,
+     * 있는 이메일 약 210ms 로 갈려 가입 여부가 드러났다 (2026-10-13 QA). 처음 쓸 때 한 번 만든다.
+     */
+    private volatile String dummyHash;
+
+    private void burnPasswordCheck(String rawPassword) {
+        String hash = dummyHash;
+        if (hash == null) {
+            hash = passwordHasher.hash("timing-equalizer-" + java.util.UUID.randomUUID());
+            dummyHash = hash;
+        }
+        passwordHasher.matches(rawPassword == null ? "" : rawPassword, hash);
+    }
+
     @Transactional
-    public User authenticate(String email, String rawPassword) {
+    public User authenticate(String email, String rawPassword, String clientIp) {
         String normalized = email == null ? "" : email.toLowerCase(Locale.ROOT).trim();
         Optional<User> maybe = userRepository.findByEmail(normalized);
-        if (maybe.isEmpty()) {
+        if (maybe.isEmpty() || maybe.get().getStatus() == UserStatus.DELETED) {
+            burnPasswordCheck(rawPassword);
             throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
         }
         User user = maybe.get();
-        if (user.getStatus() == UserStatus.DELETED) {
-            throw new BusinessException(ErrorCode.INVALID_CREDENTIALS);
-        }
 
         // 잠금 우선 검사. 비밀번호가 맞아도 잠금 중이면 거부.
-        AccountLockService.LockStatus lock = lockService.checkLock(user.getId());
+        AccountLockService.LockStatus lock = lockService.checkLock(user.getId(), clientIp);
         if (lock.locked()) {
             throw new AccountLockedException(lock.unlockAt());
         }
 
         boolean matches = passwordHasher.matches(rawPassword, user.getPasswordHash());
         if (!matches) {
-            AccountLockService.LockTriggered triggered = lockService.recordFailure(user);
+            AccountLockService.LockTriggered triggered = lockService.recordFailure(user, clientIp);
             if (triggered.triggered()) {
                 throw new AccountLockedException(triggered.unlockAt());
             }
@@ -82,7 +95,7 @@ public class LoginService {
         }
 
         // 통과: 카운터/잠금 해제 + 마지막 로그인 시각 갱신은 향후 추가.
-        lockService.recordSuccess(user);
+        lockService.recordSuccess(user, clientIp);
         return user;
     }
 

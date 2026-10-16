@@ -1,7 +1,7 @@
 package com.ticketing.pricing.streams;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 import com.ticketing.events.Envelope;
 import com.ticketing.events.Topics;
 import org.apache.kafka.common.serialization.Serdes;
@@ -40,7 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class DemandStreamTopologyTest {
 
-    private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+    private final ObjectMapper mapper = tools.jackson.databind.json.JsonMapper.builder().findAndAddModules().build();
     private TopologyTestDriver driver;
     private TestInputTopic<String, String> inputTopic;
 

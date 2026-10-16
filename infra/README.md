@@ -1,5 +1,7 @@
 # infra — 로컬 인프라 스캐폴딩
 
+Vercel 프론트 + 노트북 백엔드 공개 데모의 실행·중지·재배포 방법은 [공개 데모 운영 안내](public-demo/README.md)를 참고한다.
+
 이 디렉터리는 백엔드/프론트가 의존하는 외부 시스템(DB, 캐시, 메시지큐, 알림 mock)과 관측성 스택(LGTM)을 한 번에 띄우는 docker-compose 정의를 모은 곳이다. 시연 시에는 같은 구성이 k3d(쿠버네티스)에서도 동작하도록 `k3d/` 하위에 보조 파일을 둔다.
 
 ## 한눈에 보기
@@ -67,15 +69,23 @@ cd backend
 
 | 서비스 | 포트 | 비고 |
 |---|---|---|
-| Postgres + TimescaleDB | `localhost:5440` | user/pass: `ticket`/`ticket`, db: `ticketing` |
-| Redis | `localhost:6390` | AOF 영속화 |
-| Kafka | `localhost:9092` | KRaft 단일 노드. 토픽 자동 생성 |
+| Postgres + TimescaleDB | `localhost:5440` | user: `ticket`, db: `ticketing`, 비밀번호: `infra/.env` 의 `POSTGRES_PASSWORD` |
+| Redis | `localhost:6390` | AOF 영속화. `REDIS_PASSWORD` 가 있으면 AUTH 필요 |
+| Kafka | `localhost:9092` | KRaft 단일 노드. 토픽 자동 생성. 컨트롤러(9093)는 호스트에 열지 않음 |
 | Mailpit UI | http://localhost:8025 | SMTP는 `localhost:1025` |
 | FCM Mock | http://localhost:8086/health | `/v1/projects/{p}/messages:send` |
 | Mock PG | http://localhost:8087/health | `POST /pay` |
-| Grafana | http://localhost:3031 | `admin/admin`, 데이터소스 자동 등록 |
+| Grafana | http://localhost:3031 | `admin` / `infra/.env` 의 `GRAFANA_ADMIN_PASSWORD`, 데이터소스 자동 등록 |
 | OTel Collector | `localhost:4317` (gRPC), `4318` (HTTP) | OTLP |
-| Loki / Tempo / Mimir | `3100` / `3200` / `9009` | Grafana 안에서 보면 충분 |
+| Loki / Tempo / Mimir | `3100` / `3200` / `9009` | Grafana 안에서 보면 충분. 보존 Loki·Mimir 7일, Tempo 24시간 |
+
+## 비밀번호와 컨테이너 강화 (2026-10-14)
+
+- `make up` 이 `infra/.env` 를 처음 만들 때 `POSTGRES_PASSWORD`·`REDIS_PASSWORD`·`GRAFANA_ADMIN_PASSWORD` 를 무작위로 채운다. compose 는 Postgres·Grafana 비밀번호가 비어 있으면 뜨지 않는다(예전 기본값 `ticket`·`admin/admin`).
+- 이미 쓰던 `.env` 에 `REDIS_PASSWORD` 가 없으면 Redis 는 예전처럼 비밀번호 없이 뜬다. 넣었다면 `make backend` 가 `SPRING_DATA_REDIS_PASSWORD` 로 백엔드에 넘긴다.
+- 모든 핵심 컨테이너에 `no-new-privileges` 와 메모리 상한. Mailpit·FCM mock·Mock PG 는 `cap_drop: ALL`·읽기 전용 루트·일반 사용자(Mailpit 1000:1000).
+- Loki·Tempo·Mimir·collector 이미지는 셸·wget 이 없어 compose healthcheck 를 두지 않는다(Grafana 만). Mimir 는 기존 볼륨 소유자 때문에 root 로 둔다.
+- 백엔드 로그는 OTLP 로 collector → Loki (`app.telemetry.logs.enabled`). 데모는 `deployment.environment=public-demo` 로 구분된다(collector 는 값이 없을 때만 `local`).
 
 ## 디자인 결정
 

@@ -54,7 +54,7 @@ public class PublicShowController {
     public ResponseEntity<ShowResponse> detail(@PathVariable UUID showId) {
         Show show = queryService.getById(showId);
         // 공개 API 이므로 DRAFT/CLOSED 는 존재 자체를 숨긴다.
-        // SHOW_NOT_FOUND 로 던지면 ShowErrorAdvice 가 404 로 매핑.
+        // SHOW_NOT_FOUND 로 던지면 ApiErrorAdvice 가 404 로 매핑.
         if (show.getStatus() != ShowStatus.PUBLISHED) {
             throw new com.ticketing.common.error.BusinessException(
                     com.ticketing.common.error.ErrorCode.SHOW_NOT_FOUND,
@@ -67,6 +67,7 @@ public class PublicShowController {
     @GetMapping("/{showId}/schedules/{scheduleId}/sections")
     public ResponseEntity<Map<String, Object>> sections(@PathVariable UUID showId,
                                                          @PathVariable UUID scheduleId) {
+        queryService.requirePublicSchedule(showId, scheduleId);
         List<SectionResponse> body = queryService.listSections(scheduleId).stream()
                 .map(SectionResponse::of)
                 .toList();
@@ -76,6 +77,7 @@ public class PublicShowController {
     @GetMapping("/{showId}/schedules/{scheduleId}/seats")
     public ResponseEntity<Map<String, Object>> seats(@PathVariable UUID showId,
                                                       @PathVariable UUID scheduleId) {
+        queryService.requirePublicSchedule(showId, scheduleId);
         List<SeatSnapshotResponse> body = queryService.snapshotSeats(scheduleId).stream()
                 .map(SeatSnapshotResponse::of)
                 .toList();

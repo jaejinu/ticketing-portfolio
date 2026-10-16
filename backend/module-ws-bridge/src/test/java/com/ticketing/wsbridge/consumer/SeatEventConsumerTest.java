@@ -1,8 +1,8 @@
 package com.ticketing.wsbridge.consumer;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 import com.ticketing.events.Envelope;
 import com.ticketing.wsbridge.WsBridgeProperties;
 import com.ticketing.wsbridge.dedup.ProcessedEventCache;
@@ -36,7 +36,7 @@ import static org.mockito.Mockito.verify;
  */
 class SeatEventConsumerTest {
 
-    private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+    private final ObjectMapper mapper = tools.jackson.databind.json.JsonMapper.builder().findAndAddModules().build();
     private SimpMessagingTemplate messagingTemplate;
     private ProcessedEventCache dedup;
     private SeatEventConsumer consumer;

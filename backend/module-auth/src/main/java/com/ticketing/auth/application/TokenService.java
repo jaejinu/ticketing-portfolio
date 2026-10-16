@@ -1,6 +1,7 @@
 package com.ticketing.auth.application;
 
 import com.ticketing.auth.domain.User;
+import com.ticketing.auth.domain.UserStatus;
 import com.ticketing.auth.domain.UserRepository;
 import com.ticketing.auth.jwt.JwtTokenIssuer;
 import com.ticketing.auth.jwt.RefreshTokenStore;
@@ -52,6 +53,11 @@ public class TokenService {
         // 회전 시점에도 사용자 정보를 최신으로 reload — name/roles 가 변경됐을 수 있다.
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REFRESH));
+        // 탈퇴·영구 정지된 계정은 남은 리프레시 토큰으로도 세션을 이어 가지 못한다.
+        if (user.getStatus() == UserStatus.DELETED) {
+            refreshStore.revokeAll(userId);
+            throw new BusinessException(ErrorCode.INVALID_REFRESH);
+        }
         String access = accessIssuer.issue(user.getId(), user.getEmail(), user.getName(), user.getRoles());
         return new TokenPair(user.getId(), access, rotated.newTokenValue(), accessIssuer.ttlSeconds(),
                 user.getRoles().toArray(new String[0]));

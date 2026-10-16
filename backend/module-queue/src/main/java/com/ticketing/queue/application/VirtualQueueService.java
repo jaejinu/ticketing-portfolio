@@ -25,7 +25,17 @@ import java.util.UUID;
  *   queue:waiting:{scheduleId}           ZSET, member = ticketUUID, score = enqueue epoch ms
  *   queue:admitted:{scheduleId}:{ticket} STRING, value = holderId or "anon", TTL = admission-ttl
  *   queue:ticket:{ticket}                STRING, value = scheduleId, TTL = ticket-ttl (역조회)
+ *   queue:holder:{ticket}                STRING, value = holderId, TTL = ticket-ttl
+ *   queue:admitted-user:{scheduleId}:{holderId}
+ *                                        STRING, value = ticket, TTL = admission-ttl
+ *                                        좌석 점유가 "이 사용자가 입장했나" 를 묻는 키
  * </pre>
+ *
+ * <h2>왜 사용자 단위 입장 키를 따로 두는가</h2>
+ * <p>
+ *   입장 키는 ticket 단위라 누가 받은 입장인지 알 수 없었다. 좌석 점유는 사용자 id 로만
+ *   들어오므로, 입장 순간에 사용자 단위 키를 같이 세워 {@link #isAdmitted} 가 O(1) 로 답한다.
+ * </p>
  *
  * <h2>왜 score 가 epoch ms 인가</h2>
  * <p>
@@ -50,6 +60,12 @@ public class VirtualQueueService {
     public static final String ADMITTED_PREFIX = "queue:admitted:";
     /** ticket → scheduleId 역조회 prefix — status 호출 시 어느 큐인지 빠르게 식별. */
     public static final String TICKET_PREFIX = "queue:ticket:";
+    /** ticket → 발급받은 사용자 — admit 시 사용자 단위 입장 키를 세우는 데 사용. */
+    public static final String HOLDER_PREFIX = "queue:holder:";
+    /** 사용자 단위 입장 키 prefix — schedule × holder 단위. */
+    public static final String ADMITTED_USER_PREFIX = "queue:admitted-user:";
+    /** 회차·사용자별 현재 표 — 같은 사람이 줄을 여러 번 서지 못하게. */
+    public static final String USER_TICKET_PREFIX = "queue:user-ticket:";
 
     private final RedissonClient redissonClient;
     private final QueueProperties props;
@@ -80,6 +96,17 @@ public class VirtualQueueService {
      * @return 발급된 ticket id + 현재 상태(보통 WAITING)
      */
     public QueueStatusSnapshot enqueue(UUID scheduleId, String holderTag) {
+        // 같은 사람이 이미 줄에 있거나 입장했으면 그 표를 그대로 돌려준다. 예전엔 부를 때마다 새 표가
+        // 생겨 한 사람이 줄 여러 자리를 차지했다 (2026-10-13 QA P2).
+        RBucket<String> userTicket = redissonClient.getBucket(USER_TICKET_PREFIX + scheduleId + ":" + holderTag);
+        String existing = userTicket.get();
+        if (existing != null) {
+            QueueStatusSnapshot current = status(UUID.fromString(existing), holderTag);
+            if (current.state() == QueueState.WAITING || current.state() == QueueState.ADMITTED) {
+                return current;
+            }
+        }
+
         UUID ticket = UUID.randomUUID();
         long score = clock.millis();
 
@@ -87,10 +114,14 @@ public class VirtualQueueService {
         RScoredSortedSet<String> waiting = redissonClient.getScoredSortedSet(
                 WAITING_PREFIX + scheduleId);
         waiting.add(score, ticket.toString());
+        // 줄 자체도 만료를 둔다 — 아무도 새로 서지 않는 회차(종료·취소)의 키가 영원히 남았다.
+        waiting.expire(props.getTicketTtl());
 
         // ticket → scheduleId 역조회 키 (status 호출 최적화).
         RBucket<String> ticketBucket = redissonClient.getBucket(TICKET_PREFIX + ticket);
         ticketBucket.set(scheduleId.toString(), props.getTicketTtl());
+        redissonClient.getBucket(HOLDER_PREFIX + ticket).set(holderTag, props.getTicketTtl());
+        userTicket.set(ticket.toString(), props.getTicketTtl());
 
         enqueuedCounter.increment();
         long position = positionOrZero(waiting, ticket);
@@ -102,17 +133,17 @@ public class VirtualQueueService {
     }
 
     /**
-     * ticket 의 현재 상태 조회.
-     *
-     * <p>
-     *   조회 우선순위:
-     *   <ol>
-     *     <li>admitted 키가 살아있나? → ADMITTED</li>
-     *     <li>waiting ZSET 안에 있나? → WAITING + position</li>
-     *     <li>둘 다 없으면 EXPIRED (재 enqueue 권장)</li>
-     *   </ol>
-     * </p>
+     * 본인 표만 조회한다. 남의 표 번호를 알아도 위치·입장 여부를 볼 수 없게 — 예전엔 누구 표든 보였다.
+     * 주인이 다르면 없는 표와 똑같이 NOT_FOUND.
      */
+    public QueueStatusSnapshot status(UUID ticket, String holderTag) {
+        String holder = redissonClient.<String>getBucket(HOLDER_PREFIX + ticket).get();
+        if (holder != null && !holder.equals(holderTag)) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "대기표를 찾을 수 없습니다.");
+        }
+        return status(ticket);
+    }
+
     public QueueStatusSnapshot status(UUID ticket) {
         // ticket → scheduleId 역조회
         RBucket<String> ticketBucket = redissonClient.getBucket(TICKET_PREFIX + ticket);
@@ -157,16 +188,22 @@ public class VirtualQueueService {
         if (count <= 0) return 0;
         RScoredSortedSet<String> waiting = redissonClient.getScoredSortedSet(
                 WAITING_PREFIX + scheduleId);
+        // ticket-ttl 보다 오래 기다린 표는 표 키가 이미 만료된 좀비 — 위치 계산에서 빠지도록 먼저 지운다.
+        waiting.removeRangeByScore(0, true, clock.millis() - props.getTicketTtl().toMillis(), true);
         Collection<String> head = waiting.valueRange(0, count - 1);
         int admitted = 0;
         for (String ticketStr : head) {
             // ZREM
             boolean removed = waiting.remove(ticketStr);
             if (!removed) continue;
+            String holder = redissonClient.<String>getBucket(HOLDER_PREFIX + ticketStr).get();
+            // 주인 정보가 사라진 표는 입장시킬 사람이 없다 — 예전엔 "anon" 으로 입장 자리를 낭비했다.
+            if (holder == null) continue;
             // admission 키 SET EX
-            RBucket<String> bucket = redissonClient.getBucket(
-                    ADMITTED_PREFIX + scheduleId + ":" + ticketStr);
-            bucket.set("admitted", props.getAdmissionTtl());
+            redissonClient.getBucket(ADMITTED_PREFIX + scheduleId + ":" + ticketStr)
+                    .set(holder, props.getAdmissionTtl());
+            redissonClient.getBucket(ADMITTED_USER_PREFIX + scheduleId + ":" + holder)
+                    .set(ticketStr, props.getAdmissionTtl());
             admittedCounter.increment();
             admitted++;
         }
@@ -174,6 +211,11 @@ public class VirtualQueueService {
             log.debug("queue admitted scheduleId={}, count={}", scheduleId, admitted);
         }
         return admitted;
+    }
+
+    /** 사용자가 해당 회차에 입장해 있고 입장 유효 시간이 남았는지. */
+    public boolean isAdmitted(UUID scheduleId, String holderTag) {
+        return redissonClient.getBucket(ADMITTED_USER_PREFIX + scheduleId + ":" + holderTag).isExists();
     }
 
     /** 회차의 waiting 큐 길이 — Gauge 메트릭 / 운영 모니터링. */

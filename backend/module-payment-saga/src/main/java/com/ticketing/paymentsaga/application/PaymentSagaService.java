@@ -1,6 +1,6 @@
 package com.ticketing.paymentsaga.application;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.ticketing.common.error.BusinessException;
 import com.ticketing.common.error.ErrorCode;
 import com.ticketing.events.Topics;
@@ -155,6 +155,8 @@ public class PaymentSagaService {
             if (!hold.isActive() || !hold.getExpiresAt().isAfter(now())) {
                 throw new BusinessException(ErrorCode.PAYMENT_ALREADY_SETTLED, "만료되거나 종료된 점유는 결제할 수 없습니다.");
             }
+            // 점유 뒤 공연·회차가 닫혔을 수 있다. PG 를 부르기 전에 판매 자격을 다시 본다.
+            seatHoldService.requireOnSale(hold.getScheduleId());
             Payment p = Payment.start(holdId, holderId, hold.getScheduleId(), amount);
             UUID token = p.claim(now().plus(props.getProcessingLease()));
             paymentRepository.save(p);
@@ -217,7 +219,7 @@ public class PaymentSagaService {
                 p.requestCancellation();
             } else if ("APPROVED".equals(result.status())) {
                 SeatHold hold = seatHoldRepository.findForUpdate(p.getHoldId()).orElse(null);
-                if (hold == null || !hold.isActive() || !hold.getExpiresAt().isAfter(now())) {
+                if (hold == null || !hold.isActive() || !hold.getExpiresAt().isAfter(now()) || !isOnSale(p.getScheduleId())) {
                     // 취소 의도를 커밋한 뒤 HTTP 호출. 이후 worker는 승인 대신 취소만 수행한다.
                     p.requestCancellation();
                 } else {
@@ -232,13 +234,23 @@ public class PaymentSagaService {
                         "CANCELLED".equals(result.status()) ? "PG 취소 확인" : "PG 결제 거절");
             } else {
                 SeatHold hold = seatHoldRepository.findForUpdate(p.getHoldId()).orElse(null);
-                if (hold == null || !hold.isActive() || !hold.getExpiresAt().isAfter(now())) p.requestCancellation();
+                if (hold == null || !hold.isActive() || !hold.getExpiresAt().isAfter(now()) || !isOnSale(p.getScheduleId())) p.requestCancellation();
                 else p.retryAt(now().plus(props.getReconcileRetry()));
             }
             return p;
         });
         if (decided.owns(work.token()) && decided.isCancelRequested()) return completeCancellation(work);
         return decided;
+    }
+
+    private boolean isOnSale(UUID scheduleId) {
+        try {
+            seatHoldService.requireOnSale(scheduleId);
+            return true;
+        } catch (BusinessException ex) {
+            if (ex.code() == ErrorCode.SALES_NOT_OPEN || ex.code() == ErrorCode.SCHEDULE_NOT_FOUND) return false;
+            throw ex;
+        }
     }
 
     private Payment completeCancellation(Work work) {

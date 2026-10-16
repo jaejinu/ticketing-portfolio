@@ -23,7 +23,7 @@ dependencies {
     implementation(project(":common-domain"))
     implementation(project(":common-events"))
 
-    implementation(libs.spring.boot.starter.web)
+    implementation(libs.spring.boot.starter.webmvc)
     implementation(libs.spring.boot.starter.security)
     implementation(libs.spring.boot.starter.validation)
     implementation(libs.spring.boot.starter.data.jpa)
@@ -35,10 +35,11 @@ dependencies {
     runtimeOnly(libs.jjwt.jackson)
 
     runtimeOnly(libs.postgresql)
-    implementation(libs.flyway.core)
+    implementation(libs.spring.boot.starter.flyway)
     runtimeOnly(libs.flyway.postgresql)
 
     // ---- 테스트 ----------------------------------------------------------------
+    testImplementation(libs.spring.boot.starter.webmvc.test)
     testImplementation(libs.testcontainers.junit)
     testImplementation(libs.testcontainers.postgresql)
     // testcontainers-redis 가 v1.20.2 시점에는 별도 모듈로 제공되지 않으므로 GenericContainer 로 직접 띄운다.

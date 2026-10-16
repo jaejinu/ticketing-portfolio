@@ -61,6 +61,24 @@ public class ShowQueryService {
         return scheduleRepository.findByShowIdOrderByStartsAtAsc(showId);
     }
 
+    /**
+     * 공개 API 용 — 공개된 공연의, 그 공연에 속한 회차만. 아니면 404.
+     *
+     * <p>
+     *   예전엔 구역·좌석 공개 API 가 공연 상태도, 공연-회차 짝도 보지 않아 비공개 공연의 좌석이나
+     *   다른 공연 주소로 엉뚱한 회차가 보였다 (2026-10-13 QA P2).
+     * </p>
+     */
+    public ShowSchedule requirePublicSchedule(UUID showId, UUID scheduleId) {
+        Show show = getById(showId);
+        if (show.getStatus() != com.ticketing.show.domain.ShowStatus.PUBLISHED) {
+            throw new BusinessException(ErrorCode.SHOW_NOT_FOUND, "공연을 찾을 수 없습니다.");
+        }
+        return scheduleRepository.findById(scheduleId)
+                .filter(s -> s.getShowId().equals(showId))
+                .orElseThrow(() -> new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND, "회차를 찾을 수 없습니다."));
+    }
+
     public List<Section> listSections(UUID scheduleId) {
         return sectionRepository.findByShowScheduleIdOrderByBasePriceDesc(scheduleId);
     }

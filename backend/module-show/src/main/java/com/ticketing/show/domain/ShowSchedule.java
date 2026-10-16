@@ -83,6 +83,7 @@ public class ShowSchedule {
 
     public static ShowSchedule create(UUID showId, OffsetDateTime startsAt, OffsetDateTime endsAt,
                                       OffsetDateTime salesStartAt) {
+        validateDates(startsAt, endsAt, salesStartAt);
         return new ShowSchedule(UUID.randomUUID(), showId, startsAt, endsAt, salesStartAt,
                 ShowScheduleStatus.SCHEDULED);
     }
@@ -108,10 +109,52 @@ public class ShowSchedule {
 
     // ---- 도메인 동작 ---------------------------------------------------------
 
-    public void updateSchedule(OffsetDateTime startsAt, OffsetDateTime endsAt, OffsetDateTime salesStartAt) {
-        if (startsAt != null) this.startsAt = startsAt;
-        if (endsAt != null) this.endsAt = endsAt;
-        if (salesStartAt != null) this.salesStartAt = salesStartAt;
+    /**
+     * 일정 수정.
+     *
+     * <p>
+     *   판매가 시작된 회차(ON_SALE 등이거나 판매 시작 시각 경과)는 판매 시작 시각을 바꿀 수 없다.
+     *   예전엔 판매 중 회차의 sales_start_at 을 미래로 옮겨 기준가 잠금을 풀고 가격을 바꿀 수 있었다
+     *   (150,000 → 1,000, 2026-10-13 QA). 종료된 회차는 수정할 수 없다.
+     * </p>
+     */
+    public void updateSchedule(OffsetDateTime startsAt, OffsetDateTime endsAt, OffsetDateTime salesStartAt,
+                               OffsetDateTime now) {
+        if (this.status == ShowScheduleStatus.CLOSED) {
+            throw new BusinessException(ErrorCode.INVALID_SHOW_STATE, "종료된 회차는 수정할 수 없습니다.");
+        }
+        if (salesStartAt != null && !salesStartAt.isEqual(this.salesStartAt) && isSalesLocked(now)) {
+            throw new BusinessException(ErrorCode.SCHEDULE_BASE_PRICE_LOCKED,
+                    "판매가 시작된 회차의 판매 시작 시각은 바꿀 수 없습니다. status=" + status);
+        }
+        OffsetDateTime nextStarts = startsAt != null ? startsAt : this.startsAt;
+        OffsetDateTime nextEnds = endsAt != null ? endsAt : this.endsAt;
+        OffsetDateTime nextSales = salesStartAt != null ? salesStartAt : this.salesStartAt;
+        validateDates(nextStarts, nextEnds, nextSales);
+        this.startsAt = nextStarts;
+        this.endsAt = nextEnds;
+        this.salesStartAt = nextSales;
+    }
+
+    /**
+     * 판매가 시작돼 기준가·판매 시작 시각을 잠가야 하는가.
+     * 시각만 보면 조직자가 예정보다 일찍 연 판매(ON_SALE, 시작 시각은 미래)에서 가격을 바꿀 수 있어 상태도 본다.
+     */
+    public boolean isSalesLocked(OffsetDateTime now) {
+        return this.status != ShowScheduleStatus.SCHEDULED || !now.isBefore(this.salesStartAt);
+    }
+
+    private static void validateDates(OffsetDateTime startsAt, OffsetDateTime endsAt, OffsetDateTime salesStartAt) {
+        // 종료 시각은 선택(ends_at NULL 허용) — 있을 때만 시작보다 뒤인지 본다.
+        if (startsAt == null || salesStartAt == null) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "시작·판매 시작 시각이 필요합니다.");
+        }
+        if (endsAt != null && !endsAt.isAfter(startsAt)) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "종료 시각은 시작 시각보다 뒤여야 합니다.");
+        }
+        if (salesStartAt.isAfter(startsAt)) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "판매 시작은 공연 시작보다 늦을 수 없습니다.");
+        }
     }
 
     /** Section/Seat 일괄 등록 시 seat_total 누적. */

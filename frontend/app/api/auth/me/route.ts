@@ -23,7 +23,7 @@ import {
   setRefreshCookie,
 } from '@/lib/auth/cookies';
 import { callBackend, jsonError } from '../_backend';
-import { rotateRefreshToken } from '../_rotate';
+import { isInvalidRefreshStatus, rotateRefreshToken } from '../_rotate';
 
 export const runtime = 'nodejs';
 
@@ -44,7 +44,7 @@ async function tryRefresh(): Promise<{
   // 백엔드 rotation 은 1회 (동시 rotation → REFRESH_REUSE_DETECTED 오탐 버그 수정).
   const outcome = await rotateRefreshToken(refreshToken);
   if (!outcome.ok) {
-    if (outcome.status !== 502) {
+    if (isInvalidRefreshStatus(outcome.status)) {
       await clearRefreshCookie();
     }
     return null;

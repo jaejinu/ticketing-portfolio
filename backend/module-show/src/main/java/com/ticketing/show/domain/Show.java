@@ -84,7 +84,7 @@ public class Show {
     public static Show create(UUID organizerId, String title, String venue,
                               String description, String posterUrl) {
         return new Show(UUID.randomUUID(), organizerId, title, venue,
-                description, posterUrl, ShowStatus.DRAFT);
+                description, posterUrl == null || posterUrl.isBlank() ? null : posterUrl, ShowStatus.DRAFT);
     }
 
     /** 시드 등에서 id 를 고정해야 할 때 사용. 일반 코드에서는 {@link #create} 사용. */
@@ -112,7 +112,7 @@ public class Show {
         if (title != null) this.title = title;
         if (venue != null) this.venue = venue;
         if (description != null) this.description = description;
-        if (posterUrl != null) this.posterUrl = posterUrl;
+        if (posterUrl != null) this.posterUrl = posterUrl.isBlank() ? null : posterUrl;
     }
 
     /** DRAFT → PUBLISHED. 이미 PUBLISHED 면 멱등하게 통과. 그 외 상태에선 거부. */

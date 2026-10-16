@@ -4,7 +4,7 @@
   "private": true,
   "description": "다이나믹 프라이싱 티켓팅 플랫폼 프론트엔드 (Next.js 16 App Router)",
   "engines": {
-    "node": ">=20.0.0",
+    "node": "24.x",
     "pnpm": ">=9.0.0"
   },
   "scripts": {
@@ -17,28 +17,33 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@hookform/resolvers": "^5.2.2",
+    "@hookform/resolvers": "^5.9.1",
     "@stomp/stompjs": "^7.3.0",
-    "@tanstack/react-query": "^5.100.10",
-    "@tanstack/react-query-devtools": "^5.100.10",
+    "@tanstack/react-query": "^5.104.1",
+    "@tanstack/react-query-devtools": "^5.104.1",
     "clsx": "^2.1.1",
-    "next": "16.3.8",
-    "react": "19.2.6",
-    "react-dom": "19.2.6",
-    "react-hook-form": "^7.75.0",
+    "next": "16.4.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-hook-form": "^7.89.0",
     "tailwind-merge": "^2.6.1",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0",
-    "@tailwindcss/postcss": "^4.3.0",
+    "@playwright/test": "^1.64.0",
+    "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^22.19.18",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "eslint": "^9.39.4",
-    "eslint-config-next": "16.3.8",
-    "tailwindcss": "^4.3.0",
+    "eslint-config-next": "16.4.0",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "source-map-js": ">=1.2.2"
+    }
   },
   "packageManager": "pnpm@9.15.9"
 }

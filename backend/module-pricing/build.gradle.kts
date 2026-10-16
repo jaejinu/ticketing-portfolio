@@ -21,11 +21,11 @@ dependencies {
     implementation(project(":module-show"))
     implementation(project(":module-seat"))
 
-    implementation(libs.spring.boot.starter.web)
+    implementation(libs.spring.boot.starter.webmvc)
     implementation(libs.spring.boot.starter.data.jpa)
 
     // Phase 5b: Kafka Streams 토폴로지 — DEMAND_SIGNAL 1초 텀블링 집계.
-    implementation(libs.spring.kafka)
+    implementation(libs.spring.boot.starter.kafka)
     implementation(libs.kafka.streams)
 
     // 메트릭
@@ -34,7 +34,7 @@ dependencies {
     implementation(libs.shedlock.spring)
 
     runtimeOnly(libs.postgresql)
-    implementation(libs.flyway.core)
+    implementation(libs.spring.boot.starter.flyway)
     runtimeOnly(libs.flyway.postgresql)
 
     // Streams 토폴로지 단위 테스트 — TopologyTestDriver.

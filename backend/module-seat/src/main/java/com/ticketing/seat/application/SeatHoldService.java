@@ -1,6 +1,6 @@
 package com.ticketing.seat.application;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.ticketing.common.error.BusinessException;
 import com.ticketing.common.error.ErrorCode;
 import com.ticketing.events.Topics;
@@ -16,6 +16,12 @@ import com.ticketing.show.domain.SeatRepository;
 import com.ticketing.show.domain.SeatStatus;
 import com.ticketing.show.domain.Section;
 import com.ticketing.show.domain.SectionRepository;
+import com.ticketing.show.domain.Show;
+import com.ticketing.show.domain.ShowRepository;
+import com.ticketing.show.domain.ShowSchedule;
+import com.ticketing.show.domain.ShowScheduleRepository;
+import com.ticketing.show.domain.ShowScheduleStatus;
+import com.ticketing.show.domain.ShowStatus;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -24,6 +30,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,13 +53,18 @@ import java.util.concurrent.TimeUnit;
  * <h2>흐름 (점유)</h2>
  * <pre>
  *   1) 입력 검증 (seatIds 비어있지 않음, 중복 없음, 최대 N 이내)
- *   2) Seat 조회 (모두 같은 회차 소속이어야 함)
- *   3) Redisson tryLock ASC 순차 획득 (실패 시 보상 해제 → SEAT_ALREADY_HELD)
- *   4) Seat 도메인 메서드 hold() 호출 (AVAILABLE → HELD)
- *      └─ DB 충돌 시 잡힌 락 해제 후 예외 전파
- *   5) 가격 스냅샷 (구역별 최신 가격 틱, 없으면 basePrice) — 결제 금액 고정
- *   6) SeatHold 영속 (status=ACTIVE, expires_at=now+TTL, 스냅샷 포함)
- *   7) 응답 반환 (락은 TTL 동안 살아 있음)
+ *   2) 판매 자격 — 공연 PUBLISHED, 회차 ON_SALE (아니면 SALES_NOT_OPEN)
+ *   3) 대기열 입장 확인 (아니면 QUEUE_REJECTED)
+ *   4) 좌석이 모두 요청 회차 소속인지 값만 조회해 확인 (엔티티는 아직 안 올림)
+ *   5) (사용자, 회차) advisory lock 후 1인 좌석 한도 확인 (아니면 SEAT_LIMIT_EXCEEDED)
+ *   6) Redisson tryLock ASC 순차 획득 (실패 시 보상 해제 → SEAT_ALREADY_HELD)
+ *   7) 락 이후 Seat 를 새로 읽어 hold() (AVAILABLE → HELD) 하고 즉시 flush
+ *      └─ 버전 충돌도 이 안에서 터지므로 잡힌 락을 바로 해제하고 예외 전파
+ *   8) 가격 스냅샷 (구역별 최신 가격 틱, 없으면 basePrice) — 결제 금액 고정
+ *   9) SeatHold 영속 (status=ACTIVE, expires_at=now+TTL, 스냅샷 포함)
+ *  10) 응답 반환 (락은 TTL 동안 살아 있음)
+ *
+ *   2~5 는 아무것도 쓰기 전에 끝난다. 거절된 요청이 좌석을 묶는 일이 없도록.
  * </pre>
  *
  * <h2>흐름 (해제)</h2>
@@ -93,6 +105,11 @@ public class SeatHoldService {
      * 그 경우 전 구역 base_price 로 폴백한다.
      */
     private final ObjectProvider<CurrentPriceProvider> currentPriceProvider;
+    private final ObjectProvider<QueueAdmissionVerifier> admissionVerifier;
+    private final ShowScheduleRepository scheduleRepository;
+    private final ShowRepository showRepository;
+    /** (사용자, 회차) 단위 advisory lock — 같은 사용자의 동시 요청이 1인 한도를 함께 통과하지 않게. */
+    private final JdbcTemplate jdbc;
 
     // ---- 메트릭 ---------------------------------------------------------------
     /** 점유 성공 카운트 — 좌석 페이지 트래픽 의미 있는 부분의 핵심 KPI. */
@@ -112,7 +129,11 @@ public class SeatHoldService {
                            OutboxWriter outboxWriter,
                            ObjectMapper objectMapper,
                            SectionRepository sectionRepository,
-                           ObjectProvider<CurrentPriceProvider> currentPriceProvider) {
+                           ObjectProvider<CurrentPriceProvider> currentPriceProvider,
+                           ObjectProvider<QueueAdmissionVerifier> admissionVerifier,
+                           ShowScheduleRepository scheduleRepository,
+                           ShowRepository showRepository,
+                           JdbcTemplate jdbc) {
         this.lockManager = lockManager;
         this.seatHoldRepository = seatHoldRepository;
         this.seatRepository = seatRepository;
@@ -122,6 +143,10 @@ public class SeatHoldService {
         this.objectMapper = objectMapper;
         this.sectionRepository = sectionRepository;
         this.currentPriceProvider = currentPriceProvider;
+        this.admissionVerifier = admissionVerifier;
+        this.scheduleRepository = scheduleRepository;
+        this.showRepository = showRepository;
+        this.jdbc = jdbc;
 
         this.createdCounter = Counter.builder("seat.holds.created")
                 .description("Successful seat hold creations")
@@ -155,7 +180,8 @@ public class SeatHoldService {
      * @param holderId   점유 주체 사용자 id
      * @param seatIds    점유 요청 좌석 (1~maxSeats)
      * @return 영속된 SeatHold
-     * @throws BusinessException SEAT_ALREADY_HELD / SEAT_NOT_FOUND / INVALID_REQUEST
+     * @throws BusinessException SEAT_ALREADY_HELD / SEAT_NOT_FOUND / INVALID_REQUEST /
+     *         SCHEDULE_NOT_FOUND / SALES_NOT_OPEN / QUEUE_REJECTED / SEAT_LIMIT_EXCEEDED
      */
     @Transactional
     public SeatHold hold(UUID scheduleId, UUID holderId, List<UUID> seatIds) {
@@ -173,19 +199,40 @@ public class SeatHoldService {
                     "1회 점유 가능한 좌석은 " + props.getMaxSeats() + "석까지입니다.");
         }
 
-        // ---- 2) Seat 도메인 조회 + 회차 검증 ---------------------------------
-        // section_id 의 schedule 소속까지 보려면 join 이 필요한데, Phase 1 에선
-        // SeatRepository 가 schedule 기반 조회를 이미 제공하므로 그것을 활용한다.
-        // 단순화를 위해 우선 id 기반으로 조회하고, 각 Seat 의 section.show_schedule_id 가
-        // 모두 scheduleId 와 일치하는지는 다음 PR(SeatRepository 확장) 에서 다룬다.
-        // 본 단계에선 검증을 application 레이어에 두지 않고 도메인 hold() 가 던지는 충돌 예외만 본다.
-        List<Seat> seats = seatRepository.findAllById(dedup);
-        if (seats.size() != dedup.size()) {
+        // ---- 2) 판매 자격 ------------------------------------------------------
+        requireOnSale(scheduleId);
+
+        // ---- 3) 대기열 입장 ----------------------------------------------------
+        requireQueueAdmission(scheduleId, holderId);
+
+        // ---- 4) 좌석이 요청 회차 소속인지 -----------------------------------------
+        // 값만 읽는다. 엔티티를 지금 올리면 락 이전 version 을 들고 있게 되어,
+        // 락 이후 커밋 시점에야 버전 충돌이 터지고 Redis 락이 남는 문제가 생긴다.
+        List<SeatRepository.SeatScheduleRef> refs = seatRepository.findScheduleRefs(dedup);
+        if (refs.size() != dedup.size()) {
             throw new BusinessException(ErrorCode.SEAT_NOT_FOUND,
                     "존재하지 않는 좌석 id 가 포함되어 있습니다.");
         }
+        for (SeatRepository.SeatScheduleRef ref : refs) {
+            if (!scheduleId.equals(ref.getScheduleId())) {
+                throw new BusinessException(ErrorCode.INVALID_REQUEST,
+                        "선택한 좌석이 이 회차의 좌석이 아닙니다. seatId=" + ref.getSeatId());
+            }
+        }
 
-        // ---- 3) 분산락 획득 (실패 시 매니저가 보상 해제까지 마침) -------------
+        // ---- 5) 1인 좌석 한도 ---------------------------------------------------
+        // advisory lock 은 TX 종료 시 자동 해제. 같은 사용자의 동시 요청만 줄 세운다.
+        jdbc.query("select pg_advisory_xact_lock(hashtextextended(?, 0))",
+                rs -> { return null; }, "seat-hold-user:" + holderId + ":" + scheduleId);
+        OffsetDateTime checkedAt = OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC);
+        long alreadyHas = seatHoldRepository.countSeatsHeldOrSold(holderId, scheduleId, checkedAt);
+        if (alreadyHas + dedup.size() > props.getMaxSeatsPerUser()) {
+            throw new BusinessException(ErrorCode.SEAT_LIMIT_EXCEEDED,
+                    "한 회차에서 1인 " + props.getMaxSeatsPerUser() + "석까지 구매할 수 있습니다. 현재="
+                            + alreadyHas);
+        }
+
+        // ---- 6) 분산락 획득 (실패 시 매니저가 보상 해제까지 마침) -------------
         SeatLockHandle handle;
         try {
             handle = lockManager.tryAcquireAll(dedup.stream().toList(),
@@ -201,20 +248,35 @@ public class SeatHoldService {
                     "좌석 점유 요청이 인터럽트되었습니다.");
         }
 
-        // ---- 4) Seat 도메인 hold() — DB 상태 전이 -----------------------------
+        // The outer Spring transaction commits after this method returns. Release owned
+        // Redis locks on a definite rollback, including flush/commit failures outside catch.
+        boolean synchronizedTx = org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive();
+        if (synchronizedTx) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override public void afterCompletion(int status) {
+                            if (status == STATUS_ROLLED_BACK) handle.releaseOnFailure();
+                        }
+                    });
+        }
+
+        // ---- 7) 락 이후 Seat 를 새로 읽어 hold() — DB 상태 전이 ---------------
         // 락은 잡혔지만 DB 의 seats.status 가 이미 HELD/SOLD 일 가능성은:
-        //   - Redis 락 TTL 만료 후 만료 스케줄러가 아직 안 돌았거나(현재 미구현)
+        //   - Redis 락 TTL 만료 후 만료 스케줄러가 아직 안 돌았거나
         //   - SOLD 후 본 hold 가 새로 들어왔거나
         // 둘 다 상태 충돌이므로 도메인 메서드가 BusinessException(SEAT_ALREADY_HELD) 던짐.
+        // flush 를 여기서 해 두어야 버전 충돌이 아래 catch 안에서 터져 락이 해제된다.
         try {
+            List<Seat> seats = seatRepository.findAllById(dedup);
             for (Seat seat : seats) {
                 seat.hold();
             }
-            // ---- 5) 가격 스냅샷 — 이 순간의 구역별 현재가로 결제 금액 고정 ----------
+            seatRepository.flush();
+            // ---- 8) 가격 스냅샷 — 이 순간의 구역별 현재가로 결제 금액 고정 ----------
             // 락을 잡은 뒤 같은 TX 안에서 조회. 이후 틱이 움직여도 이 hold 의 금액은 불변.
             HoldPriceSnapshot snapshot = snapshotPrices(scheduleId, seats);
 
-            // ---- 6) SeatHold 영속 --------------------------------------------
+            // ---- 9) SeatHold 영속 --------------------------------------------
             OffsetDateTime now = OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC);
             OffsetDateTime expiresAt = now.plus(props.getTtl());
             SeatHold hold = SeatHold.create(scheduleId, holderId,
@@ -249,8 +311,51 @@ public class SeatHoldService {
 
         } catch (RuntimeException ex) {
             // DB 전이 실패 → 잡힌 락을 즉시 보상 해제.
-            handle.releaseOnFailure();
+            if (!synchronizedTx) handle.releaseOnFailure();
             throw ex;
+        }
+    }
+
+    /**
+     * 회차가 지금 판매 중인지 검사. 결제 saga 도 PG 호출 전에 같은 검사를 다시 부른다
+     * (점유 뒤 회차가 닫히는 경우).
+     *
+     * <p>
+     *   판매 여부는 회차 상태(ON_SALE)로만 본다. {@code sales_start_at} 은 예정 시각일 뿐이고,
+     *   조직자는 {@code markOnSale} 로 예정보다 일찍 판매를 열 수 있다(도메인이 의도적으로 허용).
+     *   예정 시각까지 요구하면 일찍 연 판매가 전부 막힌다 — 2026-10-14 공개 데모에서 실제로 발생.
+     * </p>
+     *
+     * @throws BusinessException SCHEDULE_NOT_FOUND / SALES_NOT_OPEN
+     */
+    public void requireOnSale(UUID scheduleId) {
+        ShowSchedule schedule = scheduleRepository.findById(scheduleId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND,
+                        "회차를 찾을 수 없습니다. scheduleId=" + scheduleId));
+        Show show = showRepository.findById(schedule.getShowId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND,
+                        "회차의 공연을 찾을 수 없습니다. scheduleId=" + scheduleId));
+        if (show.getStatus() != ShowStatus.PUBLISHED
+                || schedule.getStatus() != ShowScheduleStatus.ON_SALE) {
+            throw new BusinessException(ErrorCode.SALES_NOT_OPEN,
+                    "판매 중인 회차가 아닙니다. showStatus=" + show.getStatus()
+                            + ", scheduleStatus=" + schedule.getStatus());
+        }
+    }
+
+    private void requireQueueAdmission(UUID scheduleId, UUID holderId) {
+        if (!props.isRequireQueueAdmission()) {
+            return;
+        }
+        QueueAdmissionVerifier verifier = admissionVerifier.getIfAvailable();
+        if (verifier == null) {
+            // 설정은 켜져 있는데 구현체가 없다 = 배선 누락. 조용히 통과시키지 않는다.
+            throw new IllegalStateException("QueueAdmissionVerifier 빈이 없습니다. "
+                    + "대기열 모듈을 포함하거나 app.seat.hold.require-queue-admission=false 로 명시하세요.");
+        }
+        if (!verifier.isAdmitted(scheduleId, holderId)) {
+            throw new BusinessException(ErrorCode.QUEUE_REJECTED,
+                    "대기열 입장 후 좌석을 선택할 수 있습니다.");
         }
     }
 
@@ -389,6 +494,27 @@ public class SeatHoldService {
         // Redis 락 강제 해제 — SOLD 좌석은 재점유 불가하므로 락 의미 없음.
         lockManager.forceReleaseAll(new ArrayList<>(hold.getSeatIds()));
         log.debug("seat-hold sold: holdId={}, holder={}", hold.getId(), requesterId);
+        return hold;
+    }
+
+    /**
+     * 환불된 결제의 좌석을 다시 판매 가능하게 한다. 결제 saga 의 환불 트랜잭션 안에서 호출.
+     * SEAT_RELEASED(reason=refund) 를 발행해 좌석 지도·가격이 즉시 반영되게 한다.
+     */
+    @Transactional
+    public SeatHold returnSoldSeats(UUID holdId) {
+        SeatHold hold = seatHoldRepository.findForUpdate(holdId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.SEAT_NOT_FOUND,
+                        "점유 정보를 찾을 수 없습니다. holdId=" + holdId));
+        OffsetDateTime now = OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC);
+        for (Seat seat : seatRepository.findAllById(hold.getSeatIds())) {
+            seat.returnToSale();
+        }
+        hold.releaseAfterRefund(now);
+        outboxWriter.stage(AGGREGATE_SEAT_HOLD, hold.getId(),
+                "SEAT_RELEASED", Topics.SEAT_RELEASED,
+                SeatEventPayloads.seatReleased(objectMapper, hold, "refund"),
+                SeatEventPayloads.VERSION_V1);
         return hold;
     }
 

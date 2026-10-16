@@ -21,15 +21,21 @@ COMPOSE := docker compose -f infra/docker-compose.yml -f infra/docker-compose.lg
 
 ## up: 로컬 개발 인프라 모두 띄우기 (백그라운드)
 up:
-	@if [ ! -f infra/.env ]; then cp infra/.env.example infra/.env; echo "[init] infra/.env 생성 (기본값 적용)"; fi
+	@if [ ! -f infra/.env ]; then \
+		cp infra/.env.example infra/.env; \
+		for key in POSTGRES_PASSWORD REDIS_PASSWORD GRAFANA_ADMIN_PASSWORD; do \
+			sed -i.bak "s|^$$key=.*|$$key=$$(openssl rand -hex 16)|" infra/.env; \
+		done; rm -f infra/.env.bak; \
+		echo "[init] infra/.env 생성 — DB·Redis·Grafana 비밀번호를 무작위로 채웠어요 (infra/.env 에서 확인)"; \
+	fi
 	$(COMPOSE) up -d
 	@echo ""
-	@echo "▶ Postgres+Timescale: localhost:5440  (user/pass: ticket/ticket, db: ticketing)"
+	@echo "▶ Postgres+Timescale: localhost:5440  (user: ticket, db: ticketing, 비밀번호: infra/.env)"
 	@echo "▶ Redis:              localhost:6390"
 	@echo "▶ Kafka:              localhost:9092"
 	@echo "▶ Mailpit UI:         http://localhost:8025"
 	@echo "▶ FCM Mock:           http://localhost:8086"
-	@echo "▶ Grafana:            http://localhost:3031  (admin/admin)"
+	@echo "▶ Grafana:            http://localhost:3031  (admin, 비밀번호: infra/.env)"
 	@echo "▶ Loki/Tempo/Mimir:   Grafana 안에서 자동 등록됨"
 
 ## down: 인프라 내리기 (볼륨은 유지 — 데이터 보존)
@@ -51,6 +57,7 @@ nuke:
 # - .env 가 없어도 동작하도록 -f 체크 후 source.
 define dotenv-load
 	if [ -f infra/.env ]; then set -a; source infra/.env; set +a; fi
+	if [ -n "$${REDIS_PASSWORD:-}" ]; then export SPRING_DATA_REDIS_PASSWORD="$$REDIS_PASSWORD"; fi
 endef
 
 ## backend: 백엔드 실행 (Gradle 멀티모듈 → app-gateway 부트런)

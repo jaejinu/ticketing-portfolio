@@ -1,10 +1,10 @@
 package com.ticketing.auth;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -28,6 +28,17 @@ class RefreshRotationIntegrationTest extends AuthIntegrationTestBase {
 
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
+    @Autowired org.springframework.data.redis.core.StringRedisTemplate redis;
+
+    private org.springframework.test.web.servlet.ResultActions refresh(String token) throws Exception {
+        return mvc.perform(post("/api/v1/auth/refresh").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"refreshToken\":\"%s\"}".formatted(token)));
+    }
+
+    private String refreshOk(String token) throws Exception {
+        MvcResult r = refresh(token).andExpect(status().isOk()).andReturn();
+        return json.readTree(r.getResponse().getContentAsString()).get("refreshToken").asText();
+    }
 
     private JsonNode signupAndLogin(String email) throws Exception {
         mvc.perform(post("/api/v1/auth/signup").contentType(MediaType.APPLICATION_JSON)
@@ -111,6 +122,54 @@ class RefreshRotationIntegrationTest extends AuthIntegrationTestBase {
                         """.formatted(oldRefresh)))
            .andExpect(status().isUnauthorized())
            .andExpect(jsonPath("$.code").value("REFRESH_REUSE_DETECTED"));
+    }
+
+    @Test
+    void rotatedTokenStaysDeadEvenIfUsedMarkerIsGone() throws Exception {
+        // 2026-10-13 QA: used 마킹(1h) 이 lookup(14d) 보다 먼저 사라지면 회전된 옛 토큰이 되살아났다.
+        JsonNode login = signupAndLogin("rot-resurrect@example.com");
+        String oldRefresh = login.get("refreshToken").asText();
+        refreshOk(oldRefresh);
+
+        // used 마킹은 이제 refresh TTL 만큼 산다.
+        var usedKeys = redis.keys("auth:refresh:used:*");
+        assertThat(usedKeys).isNotEmpty();
+        assertThat(redis.getExpire(usedKeys.iterator().next())).isGreaterThan(java.time.Duration.ofDays(1).toSeconds());
+
+        // 그래도 마킹이 사라진 상황(구버전 마킹 만료 등)을 흉내 — 레코드가 없으니 거절돼야 한다.
+        redis.delete(usedKeys);
+        refresh(oldRefresh)
+           .andExpect(status().isUnauthorized())
+           .andExpect(jsonPath("$.code").value("INVALID_REFRESH"));
+    }
+
+    @Test
+    void logoutNeedsNoAccessTokenAndKillsTheRefreshToken() throws Exception {
+        JsonNode login = signupAndLogin("rot-logout@example.com");
+        String refresh = login.get("refreshToken").asText();
+
+        // Authorization 헤더 없이 — 접근 토큰이 이미 만료된 상황.
+        mvc.perform(post("/api/v1/auth/logout").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"refreshToken\":\"%s\"}".formatted(refresh)))
+           .andExpect(status().isNoContent());
+
+        refresh(refresh)
+           .andExpect(status().isUnauthorized())
+           .andExpect(jsonPath("$.code").value("INVALID_REFRESH"));
+    }
+
+    @Test
+    void graceReplayDoesNotHandOutALoggedOutToken() throws Exception {
+        // 유예 안의 옛 토큰 재사용은 새 토큰을 돌려주지만, 그 새 토큰이 이미 로그아웃됐다면 안 된다.
+        JsonNode login = signupAndLogin("rot-grace-logout@example.com");
+        String oldRefresh = login.get("refreshToken").asText();
+        String newRefresh = refreshOk(oldRefresh);
+
+        mvc.perform(post("/api/v1/auth/logout").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"refreshToken\":\"%s\"}".formatted(newRefresh)))
+           .andExpect(status().isNoContent());
+
+        refresh(oldRefresh).andExpect(status().isUnauthorized());
     }
 
     @Test

@@ -13,6 +13,9 @@ spring:
   data:
     redis:
       database: ${PUBLIC_DEMO_REDIS_DATABASE:1}
+      # 데모 전용 Redis(ticketing-public-demo-redis)는 비밀번호를 건다. 개발용 Redis 와 분리 —
+      # 개발 쪽 사고(2026-10-13 AOF 손상)가 데모 장애로 번지지 않게.
+      password: ${PUBLIC_DEMO_REDIS_PASSWORD:}
   kafka:
     consumer:
       group-id: ticketing-public-demo
@@ -23,6 +26,8 @@ app:
       allowed-origins: ${AUTH_CORS_ORIGINS}
     jwt:
       auto-generate-keys: false
+  telemetry:
+    environment: public-demo
   show:
     seed:
       organizer-password-hash: ${PUBLIC_DEMO_PASSWORD_HASH}
@@ -33,3 +38,18 @@ app:
     dispatch-consumer-group: ticketing-public-demo-alert-dispatch
   ws-bridge:
     consumer-group: ticketing-public-demo-ws
+
+# 데모는 local 프로필을 상속해 com.ticketing 이 DEBUG 였다 — 6일에 386MB 로그(회전 없음).
+# INFO 로 낮추고, 콘솔(LaunchAgent stdout) 대신 크기 제한이 있는 회전 파일에 남긴다.
+logging:
+  level:
+    com.ticketing: INFO
+  threshold:
+    console: "OFF"
+  file:
+    name: ${PUBLIC_DEMO_LOG_FILE:logs/backend.log}
+  logback:
+    rollingpolicy:
+      max-file-size: 20MB
+      max-history: 7
+      total-size-cap: 200MB

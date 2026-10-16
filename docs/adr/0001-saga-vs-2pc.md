@@ -2,7 +2,7 @@
 
 - 상태: Accepted
 - 최초 결정: 2026-05-12
-- 구현 갱신: 2026-10-06
+- 구현 갱신: 2026-10-14
 - 관련 R/F: R-NQPLRH (티켓 구매 플로우), F-IIVAAE (Saga 결제 오케스트레이션)
 
 ## 결정과 트랜잭션 경계
@@ -42,6 +42,23 @@ NOT_FOUND만으로 실패 처리하면 늦게 도착한 최초 요청이 승인�
 Mock PG 취소는 미접수 주문에도 영속 tombstone을 남겨 이후 청구를 차단한다.
 취소 의도를 저장한 결제는 이후 작업자도 취소만 수행하며 승인으로 돌아가지 않는다.
 FAILED 확정 후 유효한 점유에는 새 키로 새로운 결제를 만들 수 있다.
+
+## 관리자 환불
+
+`AdminPaymentController`와 `PaymentRefundService`가 다음 경로를 제공한다.
+
+- `POST /api/v1/admin/payments/{paymentId}/refund`: APPROVED 결제 단건 환불. REFUNDED 재요청은 기존 결과를 반환한다.
+- `POST /api/v1/admin/schedules/{scheduleId}/refunds`: CLOSED 회차의 APPROVED 결제를 순차 환불한다. 실패 목록을 반환하고 재요청하면 남은 승인 결제를 처리한다.
+
+PG 호출 전에 환불 의도·관리자·사유와 처리권을 저장한다(V015). PG 취소는 DB 트랜잭션 밖에서 호출한다. 취소 응답 후 결제 행을 잠그고 처리 토큰을 확인한 다음 REFUNDED 전환,
+좌석 반환, PAYMENT_REFUNDED Outbox와 감사 기록을 같은 트랜잭션으로 저장한다.
+PG 통신 실패는 오류로 반환한다. 공연·회차를 닫는 작업이 자동으로 환불을 실행하지는 않는다.
+
+환불 진행 중에는 결제 상태가 APPROVED이고 `refundPending=true`이다. PG 취소 실패 또는
+취소 후 DB 확정 실패 시에도 의도는 남으며, 복구 스케줄러가 처리권 만료 후 자동 재시도한다.
+관리자와 내 티켓 화면은 진행 상태를 표시하고 결과를 재조회한다. 완료 후에는 REFUNDED이고
+`refundPending=false`이다. PENDING 결제 승인 복구와 승인 결제의 환불 복구는 별도 조회 대상으로 관리한다.
+사용자 직접 환불 요청·실제 PG 계약은 아직 구현하지 않았다.
 
 ## Mock PG 계약과 저장
 

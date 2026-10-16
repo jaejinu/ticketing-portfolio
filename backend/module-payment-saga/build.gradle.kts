@@ -26,7 +26,7 @@ dependencies {
     // module-show : Seat / Section 가격 조회용 (총 결제액 검증)
     implementation(project(":module-show"))
 
-    implementation(libs.spring.boot.starter.web)
+    implementation(libs.spring.boot.starter.webmvc)
     implementation(libs.spring.boot.starter.data.jpa)
     implementation(libs.spring.boot.starter.validation)
     implementation(libs.spring.boot.starter.security)
@@ -38,7 +38,7 @@ dependencies {
     implementation("io.micrometer:micrometer-core")
 
     runtimeOnly(libs.postgresql)
-    implementation(libs.flyway.core)
+    implementation(libs.spring.boot.starter.flyway)
     runtimeOnly(libs.flyway.postgresql)
 
     // ---- 테스트 ----------------------------------------------------------------

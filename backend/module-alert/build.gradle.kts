@@ -19,14 +19,14 @@ dependencies {
     // 인증 컨텍스트 — userId
     implementation(project(":module-auth"))
 
-    implementation(libs.spring.boot.starter.web)
+    implementation(libs.spring.boot.starter.webmvc)
     implementation(libs.spring.boot.starter.validation)
     implementation(libs.spring.boot.starter.data.jpa)
     implementation(libs.spring.boot.starter.data.redis)
     implementation(libs.spring.boot.starter.security)
     implementation(libs.redisson.spring.boot)
     // @KafkaListener — PRICING_TICK consumer
-    implementation(libs.spring.kafka)
+    implementation(libs.spring.boot.starter.kafka)
 
     // Phase 7b 의존 — 본 PR 미사용. 유지.
     implementation(libs.spring.boot.starter.mail)
@@ -37,7 +37,7 @@ dependencies {
     implementation("io.micrometer:micrometer-core")
 
     runtimeOnly(libs.postgresql)
-    implementation(libs.flyway.core)
+    implementation(libs.spring.boot.starter.flyway)
     runtimeOnly(libs.flyway.postgresql)
 
     // Phase 7b 통합 테스트 — Redis Bucket4j 백엔드 실 동작 검증.

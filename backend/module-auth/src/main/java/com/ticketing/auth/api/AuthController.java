@@ -44,15 +44,18 @@ public class AuthController {
     private final LoginService loginService;
     private final TokenService tokenService;
     private final LogoutService logoutService;
+    private final com.ticketing.auth.security.ClientIpResolver clientIpResolver;
 
     public AuthController(SignupService signupService,
                           LoginService loginService,
                           TokenService tokenService,
-                          LogoutService logoutService) {
+                          LogoutService logoutService,
+                          com.ticketing.auth.security.ClientIpResolver clientIpResolver) {
         this.signupService = signupService;
         this.loginService = loginService;
         this.tokenService = tokenService;
         this.logoutService = logoutService;
+        this.clientIpResolver = clientIpResolver;
     }
 
     @PostMapping("/signup")
@@ -63,8 +66,9 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<AuthTokenResponse> login(@RequestBody @Valid LoginRequest req) {
-        User user = loginService.authenticate(req.email(), req.password());
+    public ResponseEntity<AuthTokenResponse> login(@RequestBody @Valid LoginRequest req,
+                                                   jakarta.servlet.http.HttpServletRequest http) {
+        User user = loginService.authenticate(req.email(), req.password(), clientIpResolver.resolve(http));
         TokenService.TokenPair pair = tokenService.issuePair(user);
         // 프론트 N+1 제거(2026-05-12 보강): 로그인 응답에 email/name 도 함께 전달.
         // 자세한 이유는 AuthTokenResponse 의 javadoc 참고.

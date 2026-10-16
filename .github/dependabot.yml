@@ -1,0 +1,58 @@
+# 의존성 업데이트 PR — 2026-10-13 QA: Dependabot 설정이 없어 Spring·Next 보안 패치를 손으로 챙겼다.
+# 주 1회, 생태계별로 묶어 PR 수를 줄인다. 보안 업데이트는 묶음과 별개로 바로 열린다
+# (저장소 설정에서 Dependabot alerts / security updates 를 켜야 동작).
+# 메이저 버전은 자동 PR 을 열지 않는다 — TypeScript 6·Gradle 9·Java 25·Node 26 처럼 코드·설정 변경이
+# 함께 필요한 것은 따로 계획해서 올린다. (보안 업데이트는 이 ignore 와 무관하게 열린다.)
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: /backend
+    schedule: { interval: weekly, day: monday }
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    open-pull-requests-limit: 5
+    groups:
+      backend-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule: { interval: weekly, day: monday }
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    open-pull-requests-limit: 5
+    groups:
+      frontend-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directories: [/infra/mock-services/mock-pg, /infra/mock-services/fcm-mock]
+    schedule: { interval: monthly }
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    open-pull-requests-limit: 2
+    groups:
+      mock-services:
+        patterns: ['*']
+
+  - package-ecosystem: docker
+    directories: [/backend, /infra/mock-services/mock-pg, /infra/mock-services/fcm-mock]
+    schedule: { interval: weekly, day: monday }
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns: ['*']

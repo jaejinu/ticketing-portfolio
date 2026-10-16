@@ -20,7 +20,7 @@ import java.util.UUID;
  *
  * <p>
  *   PricingScheduler 가 매 사이클마다 호출 → 회차×구역의 최근 1초 demand seat-count 합 반환.
- *   토폴로지가 아직 ready 가 아니거나 키가 없으면 0 반환 (안전 fallback).
+ *   조회 불가이면 empty, 정상 조회에 신호가 없으면 0 반환.
  * </p>
  */
 @Component
@@ -39,10 +39,10 @@ public class DemandSignalReader {
      *
      * @param lookback 현재 시각 기준 얼마나 뒤로 거슬러 조회할지 — 1초 윈도우 1~2개 포함 권장
      */
-    public long readRecentDemand(UUID scheduleId, UUID sectionId, Duration lookback) {
+    public java.util.OptionalLong readRecentDemand(UUID scheduleId, UUID sectionId, Duration lookback) {
         KafkaStreams streams = streamsFactory.getKafkaStreams();
         if (streams == null || streams.state() != KafkaStreams.State.RUNNING) {
-            return 0L;
+            return java.util.OptionalLong.empty();
         }
         ReadOnlyWindowStore<String, Long> store;
         try {
@@ -51,7 +51,7 @@ public class DemandSignalReader {
                     QueryableStoreTypes.windowStore()));
         } catch (Exception ex) {
             log.debug("demand store 조회 실패 (아직 준비 안 됨?): {}", ex.toString());
-            return 0L;
+            return java.util.OptionalLong.empty();
         }
 
         String key = scheduleId.toString() + "|" + sectionId.toString();
@@ -65,9 +65,9 @@ public class DemandSignalReader {
             }
         } catch (Exception ex) {
             log.debug("demand fetch 실패 key={}: {}", key, ex.toString());
-            return 0L;
+            return java.util.OptionalLong.empty();
         }
-        return sum;
+        return java.util.OptionalLong.of(sum);
     }
 
     /** 본 헬퍼는 Windowed 의 raw key 도 노출 가능 — 다른 모듈이 직접 사용 가능. */

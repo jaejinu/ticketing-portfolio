@@ -16,7 +16,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import Link from "next/link";
 import {
+  ApiRequestError,
   MacroDetectedError,
   RateLimitError,
 } from "@/lib/api/client";
@@ -36,10 +38,18 @@ export function QueueProgress({ showId, scheduleId }: QueueProgressProps) {
   const router = useRouter();
 
   // ---- ticket 발급 (sessionStorage 재사용) ------------------------------
-  const [ticket, setTicket] = useState<string | null>(() =>
-    readTicketFromStorage(scheduleId),
-  );
+  // 서버 렌더에는 sessionStorage 가 없다. 초기값에서 바로 읽으면 서버("진입 중")와 첫 클라이언트
+  // 렌더("상태 확인 중")가 달라 새로고침마다 hydration 오류(#418)가 났다 — 마운트 뒤에 읽는다.
+  const [ticket, setTicket] = useState<string | null>(null);
+  const [storageRead, setStorageRead] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 브라우저 저장소와의 1회 동기화
+    setTicket(readTicketFromStorage(scheduleId));
+    setStorageRead(true);
+  }, [scheduleId]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // 판매 중이 아니거나 없는 회차 — 다시 시도해도 같으므로 재시도 버튼 대신 안내만.
+  const [closedMsg, setClosedMsg] = useState<string | null>(null);
 
   // ---- 서버 방어(Phase 6b/6c) 반응 상태 ----------------------------------
   // 429 응답 시 표준 Retry-After 초를 반영해 다음 재시도 시점을 저장.
@@ -67,6 +77,15 @@ export function QueueProgress({ showId, scheduleId }: QueueProgressProps) {
         );
         return;
       }
+      const code = err instanceof ApiRequestError ? err.payload?.code : undefined;
+      if (code === "SALES_NOT_OPEN" || code === "SCHEDULE_NOT_FOUND") {
+        setClosedMsg(
+          code === "SALES_NOT_OPEN"
+            ? "지금은 판매 중인 회차가 아니에요."
+            : "회차를 찾을 수 없어요.",
+        );
+        return;
+      }
       setErrorMsg("대기열에 입장하지 못했어요. 연결을 확인한 뒤 다시 시도해 주세요.");
     },
   });
@@ -75,10 +94,10 @@ export function QueueProgress({ showId, scheduleId }: QueueProgressProps) {
   // useEffect 안 mutate 호출은 외부 시스템 동기화라 React 권장 패턴 안.
   const triedEnqueue = useRef(false);
   useEffect(() => {
-    if (ticket || triedEnqueue.current) return;
+    if (!storageRead || ticket || triedEnqueue.current) return;
     triedEnqueue.current = true;
     enqueueMutation.mutate();
-  }, [ticket, enqueueMutation]);
+  }, [storageRead, ticket, enqueueMutation]);
 
   // rate limit 만료 시각 도달 시 자동 재시도(폴링을 다시 켠다) — enqueue 도 재시도.
   useEffect(() => {
@@ -105,6 +124,12 @@ export function QueueProgress({ showId, scheduleId }: QueueProgressProps) {
         if (error instanceof MacroDetectedError) setMacroBlocked(true);
         if (error instanceof RateLimitError)
           setRateLimitedUntil(Date.now() + error.retryAfterSeconds * 1000);
+        // 이 탭에 남은 표가 내 것이 아니면(다른 계정으로 다시 로그인 등) 서버가 404 를 준다 — 새 표를 받는다.
+        if (error instanceof ApiRequestError && error.status === 404) {
+          clearTicketFromStorage(scheduleId);
+          setTicket(null);
+          triedEnqueue.current = false;
+        }
         throw error;
       }
     },
@@ -125,6 +150,7 @@ export function QueueProgress({ showId, scheduleId }: QueueProgressProps) {
     // 429/403 은 자동 재시도가 오히려 상황을 악화 — TanStack Query 의 기본 3회 재시도 비활성.
     retry: (failureCount, error) => {
       if (error instanceof RateLimitError) return false;
+      if (error instanceof ApiRequestError && error.status === 404) return false;
       if (error instanceof MacroDetectedError) return false;
       return failureCount < 2;
     },
@@ -141,6 +167,20 @@ export function QueueProgress({ showId, scheduleId }: QueueProgressProps) {
   // ---- 렌더링 분기 -----------------------------------------------------
   if (macroBlocked) {
     return <MacroBlockedView />;
+  }
+
+  if (closedMsg) {
+    return (
+      <Notice
+        tone="error"
+        title={closedMsg}
+        action={
+          <Link className="underline" href={`/shows/${showId}`}>
+            공연 정보로 돌아가기
+          </Link>
+        }
+      />
+    );
   }
 
   if (errorMsg && rateLimitedUntil == null) {
@@ -268,7 +308,7 @@ function RateLimitCountdown({ until }: { until: number }) {
     return () => clearInterval(timer);
   }, [until]);
   return (
-    <p className="text-xs text-amber-600">
+    <p className="text-xs text-amber-700">
       요청이 잦아 잠시 완충 중 · {remaining}초 뒤 자동 재개
     </p>
   );

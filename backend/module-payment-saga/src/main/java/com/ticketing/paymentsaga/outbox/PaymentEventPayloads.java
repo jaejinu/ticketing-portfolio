@@ -1,8 +1,8 @@
 package com.ticketing.paymentsaga.outbox;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 import com.ticketing.paymentsaga.domain.Payment;
 
 /**
@@ -52,6 +52,23 @@ public final class PaymentEventPayloads {
         n.put("amount", p.getAmount());
         n.put("failCode", p.getFailCode());
         n.put("failReason", p.getFailReason());
+        return n;
+    }
+
+    /**
+     * PAYMENT_REFUNDED payload.
+     * <pre>
+     *   { "paymentId", "holdId", "holderId", "scheduleId", "amount", "reason" }
+     * </pre>
+     */
+    public static JsonNode refunded(ObjectMapper mapper, Payment p, String reason) {
+        ObjectNode n = mapper.createObjectNode();
+        n.put("paymentId", p.getId().toString());
+        n.put("holdId", p.getHoldId().toString());
+        n.put("holderId", p.getHolderId().toString());
+        n.put("scheduleId", p.getScheduleId().toString());
+        n.put("amount", p.getAmount());
+        n.put("reason", reason);
         return n;
     }
 }

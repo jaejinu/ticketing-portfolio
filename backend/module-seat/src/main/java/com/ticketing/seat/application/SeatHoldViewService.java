@@ -14,6 +14,8 @@ import com.ticketing.show.domain.ShowScheduleRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -118,7 +120,8 @@ public class SeatHoldViewService {
                 total,
                 hold.getStatus(),
                 hold.getExpiresAt(),
-                hold.getCreatedAt());
+                hold.getCreatedAt(),
+                OffsetDateTime.now(ZoneOffset.UTC));
     }
 
     /**

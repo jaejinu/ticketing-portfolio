@@ -63,7 +63,7 @@ public class PublicPricingController {
             @RequestParam(defaultValue = "60") int limit) {
         // 차트용 최근 N건 raw 틱 — 시간 역순. 캔들이 아닌 원본 신호가 필요할 때(예: 디버깅 뷰).
         List<PricingTickResponse> body = repository
-                .findBySectionIdOrderByOccurredAtDesc(sectionId, PageRequest.of(0, Math.min(limit, 600)))
+                .findBySectionIdOrderByOccurredAtDesc(sectionId, PageRequest.of(0, Math.max(1, Math.min(limit, 600))))
                 .stream()
                 .map(PricingTickResponse::of)
                 .toList();

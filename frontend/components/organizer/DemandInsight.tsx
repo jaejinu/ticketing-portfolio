@@ -47,7 +47,7 @@ export function DemandInsight({ showId, scheduleId }: DemandInsightProps) {
   }
   if (ticksQuery.isError) {
     return (
-      <Panel className="text-rose-500">
+      <Panel className="text-rose-700">
         수요 데이터를 불러올 수 없습니다. 회차가 ON_SALE 인지, 가격 틱이 생성 중인지 확인해주세요.
       </Panel>
     );
@@ -98,7 +98,7 @@ export function DemandInsight({ showId, scheduleId }: DemandInsightProps) {
       <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[color:var(--color-border)] bg-[color:var(--color-background)]">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[color:var(--color-border)] text-left text-[11px] text-[color:var(--color-muted-foreground)]">
+            <tr className="border-b border-[color:var(--color-border)] text-left text-xs text-[color:var(--color-muted-foreground)]">
               <th className="px-4 py-2 font-medium">구역</th>
               <th className="px-4 py-2 font-medium text-right">현재가</th>
               <th className="px-4 py-2 font-medium text-right">베이스 대비</th>
@@ -214,9 +214,9 @@ function SummaryCard({
 }) {
   return (
     <div className="rounded-[var(--radius-lg)] border border-[color:var(--color-border)] bg-[color:var(--color-background)] p-4">
-      <p className="text-[11px] text-[color:var(--color-muted-foreground)]">{label}</p>
+      <p className="text-xs text-[color:var(--color-muted-foreground)]">{label}</p>
       <p className="text-lg font-bold tabular-nums">{value}</p>
-      <p className="text-[10px] text-[color:var(--color-muted-foreground)]">{sub}</p>
+      <p className="text-xs text-[color:var(--color-muted-foreground)]">{sub}</p>
     </div>
   );
 }

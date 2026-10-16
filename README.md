@@ -2,7 +2,9 @@
 
 수요에 따라 가격이 변하는 공연 예매를 구현한 포트폴리오 프로젝트입니다. **좌석 확보 시점의 가격을 결제까지 고정**하고, 좌석 경합·연결 끊김·결제 결과 지연에서도 사용자가 예매를 이어갈 수 있도록 설계했습니다.
 
-Java 17 · Spring Boot 3 · Next.js 16 · TypeScript · Redis · Kafka · TimescaleDB
+Java 21 · Spring Boot 4 · Next.js 16 · TypeScript · Redis · Kafka · TimescaleDB
+
+**[프로젝트 통합 가이드 — 스택·기술·기능·API·데이터·배포·백업·검증 전체 정리](docs/PROJECT_GUIDE.md)**
 
 | 공연 탐색 | 좌석 선택과 가격 | 공연 상세 |
 | --- | --- | --- |
@@ -23,7 +25,7 @@ Java 17 · Spring Boot 3 · Next.js 16 · TypeScript · Redis · Kafka · Timesc
 
 ## 실행
 
-Docker Compose, JDK 17, Node.js 22, pnpm 9.15.9가 필요합니다. 최초 빌드에는 의존성 다운로드 시간이 걸립니다.
+Docker Compose, JDK 21, Node.js 24, pnpm 9.15.9가 필요합니다. 최초 빌드에는 의존성 다운로드 시간이 걸립니다.
 
 터미널 1 — 인프라와 백엔드:
 
@@ -42,7 +44,7 @@ pnpm dev
 
 앱: http://localhost:3002 · API: http://localhost:8088 · Grafana: http://localhost:3031
 
-공연은 로컬 시드로 생성됩니다. 일반 관객은 회원가입 후 예매하며, 로컬 콘솔 데모 계정은 `organizer@demo.ticketing.local`, `admin@demo.ticketing.local`입니다(비밀번호 `Demo1234!`). DB·Grafana·데모 계정의 기본 자격 증명은 로컬 시연용입니다. 외부 운영 환경에는 그대로 사용하지 않습니다. 결제는 Mock PG이며 실제 금전 거래를 하지 않습니다.
+공연은 로컬 시드로 생성됩니다. 일반 관객은 회원가입 후 예매하며, 로컬 콘솔 데모 계정은 `organizer@demo.ticketing.local`, `admin@demo.ticketing.local`입니다(비밀번호 `Demo1234!`). 최초 `make up`은 `infra/.env`를 만들면서 DB·Redis·Grafana 비밀번호를 무작위로 생성합니다. 기존 `.env`는 덮어쓰지 않습니다. 위 데모 계정은 로컬 시연용이며 외부 운영 환경에는 그대로 사용하지 않습니다. 결제는 Mock PG이며 실제 금전 거래를 하지 않습니다.
 
 ## 검증
 
@@ -59,7 +61,7 @@ pnpm test:e2e
 make test
 ```
 
-브라우저 자동 검증은 데스크톱 Chromium·모바일 Chromium·모바일 WebKit의 31개 시나리오씩 총 93개입니다. GitHub Actions에서도 lint → build → typecheck → 브라우저 테스트를 실행합니다. 실제 iPhone Safari 및 실제 참여자 사용성 테스트는 아직 수행하지 않았습니다.
+2026-10-16 테스트 목록 기준, 브라우저 자동 검증은 데스크톱 Chromium·모바일 Chromium·모바일 WebKit의 47개 시나리오씩 총 141개입니다. 예매 흐름과 주최자·운영자 콘솔을 포함하며, `pnpm exec playwright test --list`로 현재 목록을 확인할 수 있습니다. 이 개수는 테스트 구성이고 최신 실행의 통과 결과를 의미하지 않습니다. GitHub Actions에서도 lint → build → typecheck → 브라우저 테스트를 실행합니다. 실제 iPhone Safari 및 실제 참여자 사용성 테스트는 아직 수행하지 않았습니다.
 
 ### 성능 측정의 범위
 
@@ -80,10 +82,13 @@ make test
 - PG 결과 불명은 PENDING으로 유지하고 자동 조회한다. 유효한 점유는 승인 확정하고,
   종료된 점유·미접수 주문은 PG 취소 확인 후 실패로 확정한다.
 - Mock PG는 주문별 멱등 응답·조회·취소와 재시작 후 상태 보존을 지원한다.
-  실제 PG 연동과 사용자 환불 기능은 별도 과제이며, 상세 범위는 [결제 ADR](docs/adr/0001-saga-vs-2pc.md)에 정리했다.
+  관리자는 승인 결제 단건 또는 종료된 회차의 승인 결제를 일괄 환불할 수 있다. 공연·회차 종료와 환불은 별도 작업이다.
+  실제 PG 연동과 사용자 직접 환불 요청은 미구현이며, 상세 범위는 [결제 ADR](docs/adr/0001-saga-vs-2pc.md)에 정리했다.
+- 주최자 콘솔은 공연 생성·수정, 회차·구역·좌석 구성, 공개·판매 개시·종료를 지원한다.
+  운영자 콘솔은 대기열·차단, 사용자 검색·권한·잠금 해제·강제 로그아웃, 결제 조회·환불, 감사 기록, 실패 Outbox 재발행을 지원한다.
 - Webhook 알림은 발송하지 않고 `SKIPPED` 결과를 반환한다. FCM은 Mock, SMTP는 로컬 Mailpit으로 시연한다.
 - 프론트 브라우저 테스트는 API 모의 응답 기반이다. 실제 프론트·백엔드·Mock PG를 연결한
-  예매 전체 흐름과 장애 복구 검증은 별도 범위로 관리한다.
+  결제·환불·PG 장애 복구는 [2026-10-16 검증 기록](docs/qa/2026-10-16-refund-ui-verification.md)을 참고한다. 공연 목록부터 대기열·좌석 선택·결제·환불까지의 추가 브라우저 실연동 결과는 [후속 검증 기록](docs/qa/2026-10-16-followup-verification.md)에 정리했다.
 
 ## 구조
 
@@ -92,7 +97,7 @@ flowchart LR
     subgraph Client["Next.js 16 (3002)"]
         UI["예매 · 대기열 · 알람<br/>주최자 · 운영자 콘솔"]
     end
-    subgraph Backend["Spring Boot 3 모듈러 모놀리스 (8088)"]
+    subgraph Backend["Spring Boot 4 모듈러 모놀리스 (8088)"]
         Q["module-queue<br/>대기열·레이트리밋·매크로"]
         S["module-seat<br/>분산락 좌석 점유"]
         P["module-payment-saga<br/>Saga + Outbox"]

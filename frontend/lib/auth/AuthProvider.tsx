@@ -84,6 +84,57 @@ function writeSessionToken(token: string | null): void {
   }
 }
 
+const ACCOUNT_SESSION_PREFIX = "ticketing:";
+
+function clearAccountSessionStorage(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < window.sessionStorage.length; i++) {
+      const key = window.sessionStorage.key(i);
+      if (key?.startsWith(ACCOUNT_SESSION_PREFIX)) keys.push(key);
+    }
+    keys.forEach((key) => window.sessionStorage.removeItem(key));
+  } catch {
+    // storage 를 못 쓰는 환경이면 지울 것도 없다.
+  }
+}
+
+/**
+ * api client 가 읽는 접근 토큰 — 모듈 수준 보관.
+ *
+ * 왜 React state/effect 가 아닌가 (2026-10-13 QA):
+ *   React 는 자식 effect 를 부모 effect 보다 먼저 실행한다. 토큰 복원과 client 설정을
+ *   이 Provider 의 effect 에서 하면, 보호 페이지의 첫 쿼리가 토큰 없이 나가 401 → refresh,
+ *   동시에 부팅 /me 도 토큰 없이 refresh 를 해서 새로고침마다 리프레시 토큰이 두 번 회전했다.
+ *   처음 읽을 때 sessionStorage 로 채워 두면 첫 요청부터 복원된 토큰이 붙는다.
+ */
+let currentAccessToken: string | null | undefined; // undefined = 아직 sessionStorage 를 안 읽음
+
+function getCurrentAccessToken(): string | null {
+  if (currentAccessToken === undefined) {
+    currentAccessToken = readSessionToken();
+    // 첫 STOMP CONNECT 도 토큰 없이 나가 거부되던 문제 — 같은 시점에 맞춰 둔다.
+    if (currentAccessToken) setStompAuthToken(currentAccessToken);
+  }
+  return currentAccessToken;
+}
+
+/** Provider 가 마운트되면 채우는 콜백. 그 전 호출은 무시해도 부팅 /me 가 상태를 정한다. */
+const clientHandlers: {
+  setAccessToken: (token: string | null) => void;
+  onUnauthorized: () => void;
+} = { setAccessToken: () => {}, onUnauthorized: () => {} };
+
+// 브라우저에선 모듈을 불러오는 즉시 복원해 둔다 — 자식 컴포넌트의 첫 요청·첫 STOMP 연결보다 먼저.
+if (typeof window !== "undefined") getCurrentAccessToken();
+
+configureApiClient({
+  getAccessToken: getCurrentAccessToken,
+  setAccessToken: (token) => clientHandlers.setAccessToken(token),
+  onUnauthorized: () => clientHandlers.onUnauthorized(),
+});
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const clearAccountCache = useCallback(() => {
@@ -103,17 +154,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       predicate: (query) => privateKeys.has(String(query.queryKey[0])),
     });
     queryClient.getMutationCache().clear();
+    // 대기표·결제 멱등 키도 계정에 속한다. 같은 탭의 다음 사용자가 앞사람의 입장 상태를
+    // 이어받지 않도록 로그인·로그아웃·세션 만료 때 함께 지운다 (2026-10-13 QA).
+    clearAccountSessionStorage();
   }, [queryClient]);
   // sessionStorage 는 SSR 단계에서 못 읽으므로 초기값은 null. mount effect 에서 hydrate.
   const [accessToken, setAccessTokenState] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [status, setStatus] = useState<AuthStatus>("loading");
-
-  // api client 가 항상 최신 토큰을 보도록 ref 로도 동기화.
-  const tokenRef = useRef<string | null>(null);
-  useEffect(() => {
-    tokenRef.current = accessToken;
-  }, [accessToken]);
 
   // silent refresh 타이머. 토큰이 바뀔 때마다 재스케줄.
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -121,12 +169,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   // accessToken 변경 시 sessionStorage + STOMP 헤더 동기화.
+  // 부팅 중의 초기 null 은 "아직 복원 전" 이지 로그아웃이 아니다. 이걸 그대로 쓰면 저장된 토큰이
+  // 지워져 다음 새로고침이 토큰 없이 시작했다(새로고침 두 번에 한 번 리프레시 회전, 2026-10-13 QA).
   useEffect(() => {
+    if (status === "loading" && accessToken === null) return;
     writeSessionToken(accessToken);
     setStompAuthToken(accessToken);
-  }, [accessToken]);
+  }, [accessToken, status]);
 
   const applyToken = useCallback((token: string | null) => {
+    // client 가 읽는 값은 즉시 바꾼다 — state 는 다음 렌더에야 반영된다.
+    currentAccessToken = token;
     setAccessTokenState(token);
   }, []);
 
@@ -176,11 +229,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     scheduleRef.current = scheduleSilentRefresh;
   }, [scheduleSilentRefresh]);
 
-  // api client 초기 설정. mount 시 1회.
+  // api client 콜백 연결. client 자체 설정은 모듈 수준에서 이미 끝났다.
   useEffect(() => {
-    configureApiClient({
-      getAccessToken: () => tokenRef.current,
-      setAccessToken: (token) => {
+    Object.assign(clientHandlers, {
+      setAccessToken: (token: string | null) => {
         applyToken(token);
       },
       onUnauthorized: () => {
@@ -208,7 +260,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const cachedToken = readSessionToken();
+      const cachedToken = getCurrentAccessToken();
       if (cachedToken) applyToken(cachedToken);
       try {
         const result = await apiMe();

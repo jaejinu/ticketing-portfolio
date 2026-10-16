@@ -77,5 +77,14 @@ FullPeak의 4,100 VU는 누적 주입량이며 동시 접속 수가 아닙니다
 
 - **JDK / Python 3.12 미설치 시**: Gradle wrapper / Locust 가 즉시 죽는다. 각 모듈 README 의 사전 요구 섹션 먼저 확인.
 - 백엔드 연결 실패는 성공적인 부하 검증이 아닙니다. 대상 준비 상태와 요청 성공률을 함께 확인합니다.
+- **좌석 점유는 대기열 입장 + 구매 요청 제한을 통과해야 한다 (2026-10-13 부터).** 대기열을 거치지 않고
+  `POST /seat-holds` 를 바로 두드리는 `SeatHoldSimulation`, `FullPeakSimulation` 의 좌석 구간은 그대로 돌리면
+  `403 QUEUE_REJECTED` / `429 RATE_LIMIT_EXCEEDED` 가 대부분이 된다. 좌석 경합 자체를 재려면 **부하 테스트 전용으로**
+  백엔드를 다음 값으로 띄운다 (운영·공개 데모에는 절대 쓰지 않는다).
+
+  ```bash
+  SEAT_HOLD_REQUIRE_QUEUE_ADMISSION=false QUEUE_RATELIMIT_ENABLED=false \
+    SEAT_HOLD_MAX_SEATS_PER_USER=1000 make backend
+  ```
 - **TARGET_URL** 에는 protocol(http/https) 까지 포함해야 한다. `localhost:8088` 만 적으면 Gatling 이 거부.
 - **Gradle wrapper jar 가 git LFS / 일반 파일 어느 쪽으로 커밋되는지** 확인 필요. 보통 일반 파일이지만, 회사 정책에 따라 LFS 일 수도.

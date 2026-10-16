@@ -27,6 +27,13 @@ class RateLimitFilterIntegrationTest extends QueueIntegrationTestBase {
         r.add("app.queue.rate-limit.per-ip.refill-period", () -> "PT10M");
         r.add("app.queue.rate-limit.per-user.capacity", () -> "3");
         r.add("app.queue.rate-limit.per-user.refill-period", () -> "PT10M");
+        r.add("app.queue.rate-limit.purchase-per-ip.capacity", () -> "2");
+        r.add("app.queue.rate-limit.purchase-per-ip.refill-period", () -> "PT10M");
+        r.add("app.queue.rate-limit.purchase-per-user.capacity", () -> "2");
+        r.add("app.queue.rate-limit.purchase-per-user.refill-period", () -> "PT10M");
+        r.add("app.queue.rate-limit.auth-per-ip.capacity", () -> "2");
+        r.add("app.queue.rate-limit.auth-per-ip.refill-period", () -> "PT10M");
+        r.add("app.auth.proxy.secret", () -> "rl-proxy-secret");
     }
     @LocalServerPort int port;
     @Autowired JwtTokenIssuer issuer;
@@ -36,6 +43,8 @@ class RateLimitFilterIntegrationTest extends QueueIntegrationTestBase {
     void clearTestBuckets() {
         // This client is connected only to QueueIntegrationTestBase's container.
         redis.getKeys().deleteByPattern("queue:rl:*");
+        redis.getKeys().deleteByPattern("purchase:rl:*");
+        redis.getKeys().deleteByPattern("auth:rl:*");
     }
 
     @Test
@@ -73,6 +82,63 @@ class RateLimitFilterIntegrationTest extends QueueIntegrationTestBase {
         for (int i = 0; i < 4; i++) request(null, "10.0.0.1");
         assertThat(request("unverified", "10.0.0.2").getStatusCode().value()).isEqualTo(429);
         assertThat(request(token(UUID.randomUUID()), "10.0.0.2").getStatusCode().value()).isNotIn(401, 429);
+    }
+
+    @Test
+    void seatHoldAndPaymentPostsShareSeparatePurchaseBucket() {
+        UUID user = UUID.randomUUID();
+        // 좌석·결제 POST 는 대기열 버킷과 별도 버킷(용량 2)을 쓴다. 이 테스트 앱엔 컨트롤러가 없어 통과하면 404.
+        assertThat(post(token(user), "/api/v1/seat-holds").getStatusCode().value()).isNotIn(401, 429);
+        assertThat(post(token(user), "/api/v1/payments").getStatusCode().value()).isNotIn(401, 429);
+        var blocked = post(token(user), "/api/v1/seat-holds");
+        assertThat(blocked.getStatusCode().value()).isEqualTo(429);
+        assertThat(blocked.getBody()).contains("RATE_LIMIT_EXCEEDED", "\"scope\":\"user\"");
+
+        // 구매 버킷을 다 써도 대기열 요청은 막히지 않는다(키 공간 분리).
+        assertThat(request(token(user), "10.0.0.9").getStatusCode().value()).isNotIn(401, 429);
+        // 다른 사용자는 영향 없음.
+        assertThat(post(token(UUID.randomUUID()), "/api/v1/seat-holds").getStatusCode().value()).isNotIn(401, 429);
+    }
+
+    @Test
+    void loginAndSignupShareAPerClientIpBucket() {
+        // 인증 프록시가 넘긴 방문자 IP(공유 비밀 일치)마다 따로 센다 — Vercel 출구 IP 하나로 전원이 묶이지 않게.
+        assertThat(auth("/api/v1/auth/login", "198.51.100.1", "rl-proxy-secret").getStatusCode().value()).isNotEqualTo(429);
+        assertThat(auth("/api/v1/auth/signup", "198.51.100.1", "rl-proxy-secret").getStatusCode().value()).isNotEqualTo(429);
+        var blocked = auth("/api/v1/auth/login", "198.51.100.1", "rl-proxy-secret");
+        assertThat(blocked.getStatusCode().value()).isEqualTo(429);
+        assertThat(blocked.getBody()).contains("RATE_LIMIT_EXCEEDED", "\"scope\":\"ip\"");
+        assertThat(auth("/api/v1/auth/login", "198.51.100.2", "rl-proxy-secret").getStatusCode().value()).isNotEqualTo(429);
+
+        // 비밀이 틀리면 헤더를 무시하고 실제 연결 IP 로 센다 — 헤더를 바꿔 가며 한도를 피할 수 없다.
+        assertThat(auth("/api/v1/auth/login", "203.0.113.1", "forged").getStatusCode().value()).isNotEqualTo(429);
+        assertThat(auth("/api/v1/auth/login", "203.0.113.2", "forged").getStatusCode().value()).isNotEqualTo(429);
+        assertThat(auth("/api/v1/auth/login", "203.0.113.3", "forged").getStatusCode().value()).isEqualTo(429);
+    }
+
+    private ResponseEntity<String> auth(String path, String clientIp, String proxyToken) {
+        RestTemplate rt = new RestTemplate(new org.springframework.http.client.JdkClientHttpRequestFactory());
+        rt.setErrorHandler(new org.springframework.web.client.DefaultResponseErrorHandler() {
+            @Override public boolean hasError(HttpStatusCode code) { return false; }
+        });
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-Client-Ip", clientIp);
+        headers.set("X-Proxy-Token", proxyToken);
+        return rt.exchange("http://localhost:" + port + path, HttpMethod.POST,
+                new HttpEntity<>("{}", headers), String.class);
+    }
+
+    private ResponseEntity<String> post(String bearer, String path) {
+        RestTemplate rt = new RestTemplate(new org.springframework.http.client.JdkClientHttpRequestFactory());
+        rt.setErrorHandler(new org.springframework.web.client.DefaultResponseErrorHandler() {
+            @Override public boolean hasError(HttpStatusCode code) { return false; }
+        });
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(bearer);
+        return rt.exchange("http://localhost:" + port + path, HttpMethod.POST,
+                new HttpEntity<>("{}", headers), String.class);
     }
 
     private String token(UUID id) {

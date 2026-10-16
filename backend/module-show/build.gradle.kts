@@ -24,17 +24,20 @@ dependencies {
     // 도메인 경계 위반을 인지하고 있으며 Phase 8 에 admin 컨트롤러는 auth 모듈로 이동 예정.
     implementation(project(":module-auth"))
 
-    implementation(libs.spring.boot.starter.web)
+    implementation(libs.spring.boot.starter.webmvc)
     implementation(libs.spring.boot.starter.validation)
     implementation(libs.spring.boot.starter.data.jpa)
     // @PreAuthorize 사용을 위해 security starter (filter chain 본체는 module-auth 가 정의).
     implementation(libs.spring.boot.starter.security)
+    // 지난 회차 자동 종료 작업 — 여러 인스턴스에서 한 번만 돌게.
+    implementation(libs.shedlock.spring)
 
     runtimeOnly(libs.postgresql)
-    implementation(libs.flyway.core)
+    implementation(libs.spring.boot.starter.flyway)
     runtimeOnly(libs.flyway.postgresql)
 
     // ---- 테스트 ----------------------------------------------------------------
+    testImplementation(libs.spring.boot.starter.webmvc.test)
     testImplementation(libs.testcontainers.junit)
     testImplementation(libs.testcontainers.postgresql)
 }

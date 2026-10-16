@@ -8,12 +8,12 @@
  *   <li>backpressure 안전한 send (subscription 별 큐 상한, drop 정책)</li>
  * </ul>
  *
- * <h2>STOMP destination 매핑(예정)</h2>
+ * <h2>STOMP destination 매핑</h2>
  * <ul>
- *   <li>{@code /topic/seats/{scheduleId}}    ← seat.* 이벤트</li>
- *   <li>{@code /topic/prices/{scheduleId}}   ← pricing.tick.v1</li>
- *   <li>{@code /topic/queue/{userId}}        ← queue.event.v1 (개인 큐 진행률)</li>
- *   <li>{@code /topic/alerts/{userId}}       ← alert.sent.v1</li>
+ *   <li>{@code /topic/schedules/{scheduleId}/seats}    ← seat.* 이벤트</li>
+ *   <li>{@code /topic/schedules/{scheduleId}/pricing}  ← pricing.tick.v1</li>
+ *   <li>{@code /user/queue/payments}                   ← payment.approved/failed.v1 (본인 결제 결과)</li>
+ *   <li>{@code /user/queue/alerts}                     ← alert.sent.v1</li>
  * </ul>
  */
 package com.ticketing.wsbridge;

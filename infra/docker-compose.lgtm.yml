@@ -100,14 +100,14 @@ services:
   # Grafana
   # ---------------------------------------------------------------------------
   # provisioning 디렉터리를 마운트해 데이터소스/대시보드를 코드로 관리.
-  # 기본 로그인 admin/admin (.env로 덮어쓸 수 있음).
+  # 관리자 비밀번호 기본값 없음 — infra/.env 의 GRAFANA_ADMIN_PASSWORD (예전 기본값 admin/admin, QA P3).
   grafana:
     image: ${GRAFANA_IMAGE:-grafana/grafana:13.2.3@sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572}
     container_name: ticketing-grafana
     restart: unless-stopped
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?infra/.env 에 GRAFANA_ADMIN_PASSWORD 를 지정하세요}
       # 익명 접근 끔. 데모할 때 비번 보여주면 됨.
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       # provisioning에서 등록한 데이터소스/대시보드는 UI에서 수정 잠금 해제.
@@ -119,6 +119,13 @@ services:
       - ./grafana-provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
     ports:
       - "${DEV_BIND_ADDRESS:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
     depends_on:
       - loki
       - tempo

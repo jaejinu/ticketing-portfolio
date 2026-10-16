@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/Button";
 import { Notice } from "@/components/ui/Notice";
 import { won } from "@/lib/format/display";
 import { createPaymentKey } from "@/lib/api/paymentKey";
+import { ApiRequestError } from "@/lib/api/client";
 
 export default function CheckoutPage({
   params,
@@ -37,8 +38,12 @@ function Checkout({ holdId }: { holdId: string }) {
     return () => clearInterval(timer);
   }, []);
   const hold = holdQuery.data;
+  // 기기 시계가 서버와 다르면(예: 5분 빠름) 남은 점유가 화면에선 만료로 보였다. 응답을 받은 시각과
+  // 서버 시각의 차이만큼 보정한다. 서버 시각이 없거나 읽을 수 없으면 보정하지 않는다.
+  const serverMs = hold?.serverTime ? Date.parse(hold.serverTime) : NaN;
+  const clockSkewMs = Number.isFinite(serverMs) ? serverMs - holdQuery.dataUpdatedAt : 0;
   const secondsLeft = hold
-    ? Math.max(0, Math.ceil((Date.parse(hold.expiresAt) - now) / 1000))
+    ? Math.max(0, Math.ceil((Date.parse(hold.expiresAt) - (now + clockSkewMs)) / 1000))
     : 0;
   const expired =
     !!hold &&
@@ -48,6 +53,8 @@ function Checkout({ holdId }: { holdId: string }) {
       hold.status === "RELEASED");
   const [result, setResult] = useState<Payment | null>(null);
   const [payError, setPayError] = useState(false);
+  // 서버가 명확히 거절한 경우(판매 종료 등)는 "결과를 다시 확인" 안내 대신 이유를 보여 준다.
+  const [payErrorCode, setPayErrorCode] = useState<string | undefined>();
   const key = useRef<string | null>(null);
   const submitting = useRef(false);
   // A network retry reuses this hold's key, including after a refresh.
@@ -77,8 +84,14 @@ function Checkout({ holdId }: { holdId: string }) {
     onSuccess: (p) => {
       setResult(p);
       setPayError(false);
+      setPayErrorCode(undefined);
     },
-    onError: () => setPayError(true),
+    onError: (err) => {
+      setPayError(true);
+      setPayErrorCode(
+        err instanceof ApiRequestError ? err.payload?.code : undefined,
+      );
+    },
     onSettled: () => {
       submitting.current = false;
     },
@@ -302,7 +315,13 @@ function Checkout({ holdId }: { holdId: string }) {
                     "결제가 거절되었습니다. 내 티켓에서 이력을 확인하거나 좌석을 다시 선택해 주세요."}
                 </Notice>
               )}
-              {payError && (
+              {payError && payErrorCode === "SALES_NOT_OPEN" && (
+                <Notice tone="error" title="판매가 종료된 회차예요.">
+                  이 회차는 지금 판매 중이 아니어서 결제하지 않았어요. 공연
+                  페이지에서 다른 회차를 확인해 주세요.
+                </Notice>
+              )}
+              {payError && payErrorCode !== "SALES_NOT_OPEN" && (
                 <Notice tone="error" title="결제 응답을 확인하지 못했어요.">
                   아래에서 같은 요청의 결과를 다시 확인할 수 있습니다. 새 결제로
                   중복 요청하지 않습니다.

@@ -98,3 +98,169 @@ export async function listQueueOverview(): Promise<ScheduleQueue[]> {
 export async function getTrafficStats(): Promise<TrafficStats> {
   return apiRequest('/admin/queue/traffic', { method: 'GET' }, TrafficStatsSchema);
 }
+
+/* ────────────────────────────────────────────────────────
+ * 사용자 관리
+ * ──────────────────────────────────────────────────────── */
+
+export const AdminUserSchema = z.object({
+  userId: z.string(),
+  email: z.string(),
+  name: z.string(),
+  roles: z.array(z.string()),
+  status: z.string(),
+  lockedOnAllIps: z.boolean(),
+});
+export type AdminUser = z.infer<typeof AdminUserSchema>;
+
+export async function searchUsers(q: string): Promise<AdminUser[]> {
+  const body = await apiRequest(
+    `/admin/users?q=${encodeURIComponent(q)}`,
+    { method: 'GET' },
+    z.object({ users: z.array(AdminUserSchema) }),
+  );
+  return body.users;
+}
+
+export type AssignableRole = 'USER' | 'ORGANIZER' | 'ADMIN';
+
+export async function changeUserRole(
+  userId: string,
+  action: 'ADD' | 'REMOVE',
+  role: AssignableRole,
+): Promise<string[]> {
+  const body = await apiRequest(
+    `/admin/users/${userId}/roles`,
+    { method: 'POST', json: { action, role } },
+    z.object({ roles: z.array(z.string()) }),
+  );
+  return body.roles;
+}
+
+export async function unlockUser(userId: string): Promise<void> {
+  await apiRequestVoid(`/admin/users/${userId}/lock`, { method: 'DELETE' });
+}
+
+export async function revokeUserSessions(userId: string): Promise<void> {
+  await apiRequestVoid(`/admin/users/${userId}/sessions`, { method: 'DELETE' });
+}
+
+/* ────────────────────────────────────────────────────────
+ * 이벤트 발행(outbox)
+ * ──────────────────────────────────────────────────────── */
+
+const OutboxFailedSchema = z.object({
+  id: z.string(),
+  eventType: z.string(),
+  topic: z.string(),
+  retryCount: z.number().int(),
+  lastError: z.string().nullable(),
+  createdAt: z.string(),
+});
+const OutboxSummarySchema = z.object({
+  pending: z.number().int(),
+  failed: z.number().int(),
+  oldestPendingAt: z.string().nullable(),
+  recentFailed: z.array(OutboxFailedSchema),
+});
+export type OutboxSummary = z.infer<typeof OutboxSummarySchema>;
+
+export async function getOutboxSummary(): Promise<OutboxSummary> {
+  return apiRequest('/admin/outbox', { method: 'GET' }, OutboxSummarySchema);
+}
+
+/** FAILED 이벤트를 다시 발행 대기로 — 비우면 전부. Kafka 가 돌아온 뒤에 쓴다. */
+export async function requeueFailedOutbox(ids?: string[]): Promise<number> {
+  const body = await apiRequest(
+    '/admin/outbox/failed/requeue',
+    { method: 'POST', json: { ids: ids ?? [] } },
+    z.object({ requeued: z.number().int() }),
+  );
+  return body.requeued;
+}
+
+/* ────────────────────────────────────────────────────────
+ * 회차·결제·환불
+ * ──────────────────────────────────────────────────────── */
+
+export const AdminScheduleSchema = z.object({
+  scheduleId: z.string(),
+  showId: z.string(),
+  showTitle: z.string(),
+  showStatus: z.string(),
+  startsAt: z.string(),
+  status: z.string(),
+  seatTotal: z.number(),
+});
+export type AdminSchedule = z.infer<typeof AdminScheduleSchema>;
+
+export async function listAllSchedules(): Promise<AdminSchedule[]> {
+  const body = await apiRequest(
+    '/admin/schedules',
+    { method: 'GET' },
+    z.object({ schedules: z.array(AdminScheduleSchema) }),
+  );
+  return body.schedules;
+}
+
+export const AdminPaymentSchema = z.object({
+  refundPending: z.boolean().default(false),
+  paymentId: z.string(),
+  holdId: z.string(),
+  holderId: z.string(),
+  amount: z.number(),
+  status: z.string(),
+  failCode: z.string().nullable().optional(),
+  createdAt: z.string().optional(),
+});
+export type AdminPayment = z.infer<typeof AdminPaymentSchema>;
+
+export async function listSchedulePayments(scheduleId: string): Promise<AdminPayment[]> {
+  const body = await apiRequest(
+    `/admin/payments?scheduleId=${encodeURIComponent(scheduleId)}`,
+    { method: 'GET' },
+    z.object({ payments: z.array(AdminPaymentSchema) }),
+  );
+  return body.payments;
+}
+
+export async function refundPayment(paymentId: string, reason: string): Promise<AdminPayment> {
+  return apiRequest(`/admin/payments/${paymentId}/refund`, { method: 'POST', json: { reason } }, AdminPaymentSchema);
+}
+
+export async function refundSchedule(
+  scheduleId: string,
+  reason: string,
+): Promise<{ refunded: string[]; failed: string[] }> {
+  return apiRequest(
+    `/admin/schedules/${scheduleId}/refunds`,
+    { method: 'POST', json: { reason } },
+    z.object({ refunded: z.array(z.string()), failed: z.array(z.string()) }),
+  );
+}
+
+/* ────────────────────────────────────────────────────────
+ * 감사 기록
+ * ──────────────────────────────────────────────────────── */
+
+export const AuditEntrySchema = z.object({
+  id: z.string(),
+  actorId: z.string(),
+  action: z.string(),
+  targetType: z.string(),
+  targetId: z.string(),
+  detail: z.record(z.string(), z.unknown()).nullable().optional(),
+  clientIp: z.string().nullable().optional(),
+  createdAt: z.string(),
+});
+export type AuditEntry = z.infer<typeof AuditEntrySchema>;
+
+export async function listAudit(targetId?: string): Promise<AuditEntry[]> {
+  const query = targetId ? `?limit=100&targetId=${encodeURIComponent(targetId)}` : '?limit=100';
+  const body = await apiRequest(
+    `/admin/audit${query}`,
+    { method: 'GET' },
+    z.object({ entries: z.array(AuditEntrySchema) }),
+  );
+  return body.entries;
+}

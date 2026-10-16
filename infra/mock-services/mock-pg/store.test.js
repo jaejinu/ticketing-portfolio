@@ -66,6 +66,18 @@ test('HTTP concurrent retries share one approval, lookup and cancellation are co
   await fetch(`${base}/payments/same-order/cancel`, { method: 'POST' });
   assert.equal((await pay(100)).status, 409);
 });
+test('HTTP pending reply waits again when the timer wakes before readyAt', async t => {
+  // Timers can fire ~1ms early on slow CI hosts. Simulate the worst case with a store clock that
+  // runs at half speed: after the first wait the order is still PENDING, so the handler must re-wait
+  // instead of returning 409 for a payment that is about to be approved.
+  const start = Date.now();
+  const { store } = fixture(t, { random: () => 0.995, delayMs: 40, now: () => start + Math.floor((Date.now() - start) / 2) });
+  const base = await serve(t, store);
+  const res = await fetch(`${base}/pay`, { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ orderId: 'slow-clock', amount: 100 }) });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).status, 'APPROVED');
+});
 test('HTTP cancelled missing order never charges; malformed amount is rejected', async t => {
   const { store } = fixture(t);
   const base = await serve(t, store);

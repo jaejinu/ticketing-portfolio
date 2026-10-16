@@ -136,6 +136,25 @@ class MacroDetectionFilterIntegrationTest extends QueueIntegrationTestBase {
                 .isNotEqualTo(HttpStatus.FORBIDDEN.value());
     }
 
+    @Test
+    void admittedUserBlockedLaterCannotCreateHoldOrPayment() {
+        UUID user = UUID.randomUUID();
+        String token = issuer.issue(user, "blocked@example.test", "Blocked", List.of("USER"));
+        redis.getBucket("queue:macro:blocked:user:" + user).set("1", java.time.Duration.ofMinutes(1));
+        RestTemplate rt = restTemplateWithoutErrorHandler();
+        for (String path : List.of("/api/v1/seat-holds", "/api/v1/payments")) {
+            var response = rt.exchange("http://localhost:" + port + path, HttpMethod.POST,
+                    request(uniqueIp(), "Mozilla/5.0", token), String.class);
+            assertThat(response.getStatusCode().value()).as(path).isEqualTo(403);
+            assertThat(response.getBody()).as(path).contains("MACRO_DETECTED");
+        }
+        // Result lookup and releasing an existing hold must stay available after a block.
+        var lookup = rt.exchange("http://localhost:" + port + "/api/v1/payments", HttpMethod.GET,
+                request(uniqueIp(), "Mozilla/5.0", token), String.class);
+        assertThat(lookup.getBody()).doesNotContain("MACRO_DETECTED");
+        assertThat(redis.getList("queue:macro:window:user:" + user).size()).isZero();
+    }
+
     // -------------------------------------------------------------------------
 
     private RestTemplate restTemplateWithoutErrorHandler() {

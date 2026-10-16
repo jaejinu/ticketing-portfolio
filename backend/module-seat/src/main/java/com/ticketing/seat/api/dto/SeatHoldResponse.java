@@ -3,6 +3,7 @@ package com.ticketing.seat.api.dto;
 import com.ticketing.seat.domain.SeatHold;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -32,7 +33,13 @@ public record SeatHoldResponse(
         long totalAmount,
         String status,
         OffsetDateTime expiresAt,
-        OffsetDateTime createdAt
+        OffsetDateTime createdAt,
+        /*
+         * 응답을 만든 서버 시각. 화면 카운트다운은 expiresAt 과 "기기 시계" 를 비교했는데, 기기 시계가
+         * 5분 빠르면 서버에선 남은 점유가 화면에선 만료돼 결제를 못 했다 (2026-10-13 QA P2).
+         * 화면은 serverTime 과 받은 시각의 차이로 기기 시계를 보정한다.
+         */
+        OffsetDateTime serverTime
 ) {
 
     /** 단순 변환 — showId/breakdown/amount 미포함. 내부 호환용. */
@@ -47,7 +54,8 @@ public record SeatHoldResponse(
                 0L,
                 hold.getStatus(),
                 hold.getExpiresAt(),
-                hold.getCreatedAt()
+                hold.getCreatedAt(),
+                OffsetDateTime.now(ZoneOffset.UTC)
         );
     }
 }

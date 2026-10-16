@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -47,6 +48,7 @@ public class SectionCommandService {
     public Section addSection(UUID organizerId, UUID scheduleId,
                               String name, SectionGrade grade, long basePrice) {
         ShowSchedule schedule = loadOwnedSchedule(organizerId, scheduleId);
+        requireSeatMapEditable(schedule);
         Section section = Section.create(schedule.getId(), name, grade, basePrice);
         return sectionRepository.save(section);
     }
@@ -61,8 +63,29 @@ public class SectionCommandService {
         loadOwnedSchedule(organizerId, schedule.getId());
 
         OffsetDateTime now = OffsetDateTime.now(clock.withZone(ZoneId.of("UTC")));
-        section.changeBasePrice(newPrice, schedule.getSalesStartAt(), now);
+        section.changeBasePrice(newPrice, schedule, now);
         return section;
+    }
+
+    /** 주최자 콘솔용 — 본인 회차의 구역 목록. 공개 API 와 달리 비공개 공연에서도 볼 수 있다. */
+    @Transactional(readOnly = true)
+    public List<Section> listOwned(UUID organizerId, UUID scheduleId) {
+        loadOwnedSchedule(organizerId, scheduleId);
+        return sectionRepository.findByShowScheduleIdOrderByBasePriceDesc(scheduleId);
+    }
+
+    /**
+     * 좌석 배치(구역·좌석)는 판매를 열기 전에만 바꾼다.
+     *
+     * <p>
+     *   예전엔 판매 중·종료된 회차에도 구역·좌석이 추가됐다 (2026-10-13 QA P2) — 판매 중에 좌석 수가
+     *   바뀌면 점유율·가격 계산과 이미 본 좌석 지도가 어긋난다.
+     * </p>
+     */
+    static void requireSeatMapEditable(ShowSchedule schedule) {
+        if (schedule.getStatus() != com.ticketing.show.domain.ShowScheduleStatus.SCHEDULED) {
+            throw new BusinessException(ErrorCode.INVALID_SHOW_STATE, "판매를 연 뒤에는 구역·좌석을 바꿀 수 없습니다.");
+        }
     }
 
     private ShowSchedule loadOwnedSchedule(UUID organizerId, UUID scheduleId) {

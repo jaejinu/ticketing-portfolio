@@ -15,10 +15,12 @@ dependencies {
     implementation(project(":common-events"))
     // 활성 회차 조회 — 가격 모듈과 동일 패턴.
     implementation(project(":module-show"))
+    // 좌석 점유가 대기열 입장을 확인하는 포트(QueueAdmissionVerifier) 구현용.
+    implementation(project(":module-seat"))
     // 인증 컨텍스트 — enqueue 요청은 익명도 허용하지만, 로그인 시 holderId 추적.
     implementation(project(":module-auth"))
 
-    implementation(libs.spring.boot.starter.web)
+    implementation(libs.spring.boot.starter.webmvc)
     implementation(libs.spring.boot.starter.validation)
     implementation(libs.spring.boot.starter.data.redis)
     implementation(libs.spring.boot.starter.security)
@@ -39,7 +41,7 @@ dependencies {
     // Flyway auto-config 이 활성화되려면 classpath 에 존재해야 한다.
     // 운영 부팅은 app-gateway 가 Flyway 를 이미 통합 관리하므로 중복 문제 없음.
     runtimeOnly(libs.postgresql)
-    implementation(libs.flyway.core)
+    implementation(libs.spring.boot.starter.flyway)
     runtimeOnly(libs.flyway.postgresql)
 
     // ---- 테스트 ----------------------------------------------------------------

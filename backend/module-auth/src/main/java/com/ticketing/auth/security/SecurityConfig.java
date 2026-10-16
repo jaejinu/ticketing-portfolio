@@ -1,7 +1,8 @@
 package com.ticketing.auth.security;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.ticketing.auth.jwt.JwtTokenVerifier;
+import com.ticketing.common.error.ApiErrorBody;
 import com.ticketing.common.error.ErrorCode;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,7 +24,6 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Spring Security 설정.
@@ -78,7 +78,10 @@ public class SecurityConfig {
                     .requestMatchers(HttpMethod.POST,
                             "/api/v1/auth/signup",
                             "/api/v1/auth/login",
-                            "/api/v1/auth/refresh").permitAll()
+                            "/api/v1/auth/refresh",
+                            // 로그아웃의 자격 증명은 본문의 리프레시 토큰 자체다. 접근 토큰(15분)이
+                            // 만료된 뒤 로그아웃하면 401 로 막혀 서버 쪽 토큰이 14일 남던 문제를 막는다.
+                            "/api/v1/auth/logout").permitAll()
                     .requestMatchers(HttpMethod.GET,
                             "/api/v1/shows",
                             "/api/v1/shows/**",
@@ -97,9 +100,9 @@ public class SecurityConfig {
                     .anyRequest().permitAll())
             .exceptionHandling(e -> e
                     .authenticationEntryPoint((req, res, ex) -> writeJson(res, HttpServletResponse.SC_UNAUTHORIZED,
-                            Map.of("code", "AUTHENTICATION_REQUIRED")))
+                            ApiErrorBody.of(ErrorCode.AUTHENTICATION_REQUIRED)))
                     .accessDeniedHandler((req, res, ex) -> writeJson(res, HttpServletResponse.SC_FORBIDDEN,
-                            Map.of("code", "FORBIDDEN"))))
+                            ApiErrorBody.of(ErrorCode.FORBIDDEN))))
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
             // BasicAuthenticationFilter 가 등록되어 있는 보안 모듈도 있어 보강 차원으로 한 번 더 위치 보장.
             .addFilterAfter(jwtFilter, BasicAuthenticationFilter.class)
@@ -129,8 +132,4 @@ public class SecurityConfig {
         res.setCharacterEncoding("UTF-8");
         res.getWriter().write(objectMapper.writeValueAsString(body));
     }
-
-    /** 미사용이지만 향후 다른 도메인 ErrorCode 사용 시 추가용 placeholder. */
-    @SuppressWarnings("unused")
-    private static String codeOf(ErrorCode c) { return c.name(); }
 }

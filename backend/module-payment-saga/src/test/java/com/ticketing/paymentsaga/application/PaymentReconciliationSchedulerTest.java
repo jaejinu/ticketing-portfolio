@@ -9,6 +9,19 @@ import static org.mockito.Mockito.*;
 
 class PaymentReconciliationSchedulerTest {
     @Test
+    void paymentScanFailureStillRunsRefundsAndAllowsTheNextScan() {
+        var service = mock(PaymentSagaService.class);
+        var refunds = mock(PaymentRefundService.class);
+        var scheduler = new PaymentReconciliationScheduler(service, refunds, Runnable::run);
+        doThrow(new IllegalStateException("temporary failure")).doNothing().when(service).reconcileDue();
+        org.assertj.core.api.Assertions.assertThatThrownBy(scheduler::scan)
+                .isInstanceOf(IllegalStateException.class);
+        scheduler.scan();
+        verify(service, times(2)).reconcileDue();
+        verify(refunds, times(2)).reconcileDue();
+    }
+
+    @Test
     void slowRecoveryDoesNotBlockSchedulerOrQueueDuplicateScans() throws Exception {
         var executor = new PaymentModuleConfig().paymentRecoveryExecutor();
         executor.initialize();
@@ -20,7 +33,7 @@ class PaymentReconciliationSchedulerTest {
             return null;
         }).when(service).reconcileDue();
         try {
-            var scheduler = new PaymentReconciliationScheduler(service, executor);
+            var scheduler = new PaymentReconciliationScheduler(service, mock(PaymentRefundService.class), executor);
             scheduler.scan();
             assertThat(entered.await(2, TimeUnit.SECONDS)).isTrue();
             for (int i = 0; i < 10; i++) scheduler.scan();

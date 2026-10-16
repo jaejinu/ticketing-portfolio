@@ -13,7 +13,7 @@
 
 ## 2. 기술 스택 — 무엇을, 왜
 
-### 백엔드 (Java 17 + Spring Boot 3.5.16, Gradle 멀티모듈)
+### 백엔드 (Java 21 + Spring Boot 4.1.1, Gradle 12개 모듈)
 
 | 기술 | 역할 | 왜 이걸 썼나 |
 | --- | --- | --- |
@@ -92,6 +92,7 @@ seat의 `CurrentPriceProvider`를 구현한다. Kafka는 수요 집계·알람·
    │
    ▼ ② 좌석 선택   POST /api/v1/seat-holds
    │   SeatHoldController → SeatHoldService.hold()
+   │   → 공연 PUBLISHED·회차 ON_SALE, 대기열 입장, 좌석의 회차 소속, 개인별 한도 검증
    │   → RedissonSeatLockManager: seatId ASC 정렬 → tryLock(200ms) → 실패 시 역순 해제
    │   → Seat.markHeld() (JPA @Version = 2차 백스톱) → SeatHold 저장(TTL 5분)
    │   → 확보 시점 구역별 단가·총액 스냅샷 저장 → 이후 결제 금액으로 사용
@@ -125,7 +126,14 @@ seat의 `CurrentPriceProvider`를 구현한다. Kafka는 수요 집계·알람·
 - 승인 확인 시 점유가 유효하면 판매 확정한다. 점유가 끝났거나 PG에 주문이 없으면 취소 의도를
   DB에 기록하고 PG 취소 확인 후 FAILED로 확정한다. 취소 실패는 PENDING으로 남겨 다시 시도한다.
 - 사용자 해제·TTL 만료·판매 확정은 같은 점유 행의 쓰기 잠금을 사용한다.
-- Mock PG 상태는 Compose 볼륨에 보존한다. 실제 PG 연동과 사용자 환불은 범위 밖이다.
+- Mock PG 상태는 Compose 볼륨에 보존한다. 실제 PG 연동과 사용자 직접 환불 요청은 미구현이다.
+
+### 관리자 환불과 운영 콘솔
+
+- `AdminPaymentController` → `PaymentRefundService`: 승인 결제 단건 환불과 종료된 회차의 승인 결제 일괄 환불을 제공한다.
+- PG 호출 전에 환불 의도와 처리권을 저장한다(V015). PG 취소는 DB 트랜잭션 밖에서 호출한다. 이후 결제 행을 잠그고 처리 토큰을 확인한 다음 REFUNDED 전환, 판매 좌석 반환, Outbox 이벤트와 감사 기록을 한 트랜잭션으로 저장한다. 이미 환불된 결제는 그대로 반환한다.
+- PG 장애나 취소 후 DB 확정 실패는 저장된 환불 의도로 자동 복구한다. 관리자와 내 티켓은 `refundPending`을 표시한다. 환불 완료 이벤트는 ws-bridge가 구매자 개인 채널로 전파하고 내 티켓 목록·상세를 즉시 재조회한다. 일괄 환불 응답의 실패 목록에는 아직 처리 중인 건도 포함된다. 공연·회차 종료와 환불은 별도 운영 작업이다. PENDING 결제의 자동 복구와 관리자 환불을 구분해야 한다([결제 ADR](adr/0001-saga-vs-2pc.md)).
+- 프론트의 `app/organizer/`는 공연 생성부터 공개·판매 관리까지, `app/admin/`은 대기열·사용자 권한·세션·결제 환불·감사 기록·실패 Outbox 재발행을 제공한다.
 
 ## 5. 코드 읽는 순서 (추천 루트)
 
@@ -167,7 +175,7 @@ seat의 `CurrentPriceProvider`를 구현한다. Kafka는 수요 집계·알람·
 ## 7. 관측성 — 무엇이 어떻게 보이나
 
 - 백엔드 → OTLP(4318) → **OTel Collector** → 메트릭은 Mimir, 트레이스는 Tempo, 로그는 Loki
-- Grafana(`http://localhost:3031`, admin/admin) 의 **"Ticketing — KPI Overview"** 대시보드가
+- Grafana(`http://localhost:3031`, 계정·비밀번호는 `infra/.env` 기준) 의 **"Ticketing — KPI Overview"** 대시보드가
   README KPI 와 1:1: 좌석 락 p95 / PG 호출 p95 / 알람 평가 p99 / hold 생성 vs 충돌 /
   대기열 유입·입장 / 봇 차단 / 가격 틱 생산량 / outbox 재시도 / WS 팬아웃 / 알람 quota
 - 메트릭 이름 규칙: 코드의 `seat.lock.acquire.duration` → Prometheus 에선

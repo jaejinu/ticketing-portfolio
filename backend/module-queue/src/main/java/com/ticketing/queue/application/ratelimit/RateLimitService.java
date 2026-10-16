@@ -46,6 +46,11 @@ public class RateLimitService {
     public static final String KEY_PREFIX_IP = "queue:rl:ip:";
     /** 로그인 사용자 스코프 Redis 키 prefix. */
     public static final String KEY_PREFIX_USER = "queue:rl:user:";
+    /** 좌석 점유·결제 생성 전용 버킷 prefix — 대기열 버킷과 분리. */
+    public static final String PURCHASE_KEY_PREFIX_IP = "purchase:rl:ip:";
+    public static final String PURCHASE_KEY_PREFIX_USER = "purchase:rl:user:";
+    /** 로그인·가입 전용 IP 버킷 prefix. */
+    public static final String AUTH_KEY_PREFIX_IP = "auth:rl:ip:";
 
     private final ProxyManager<String> proxyManager;
     private final QueueProperties.RateLimit rateLimit;
@@ -68,17 +73,36 @@ public class RateLimitService {
      * @return 소비 결과 — {@link ConsumptionProbe#isConsumed()} 로 허용 여부 판단
      */
     public ConsumptionProbe tryConsume(String scope, String key) {
+        boolean user = RequestScope.SCOPE_USER.equals(scope);
+        return consume(scope, (user ? KEY_PREFIX_USER : KEY_PREFIX_IP) + key,
+                user ? rateLimit.getPerUser() : rateLimit.getPerIp(), "queue");
+    }
+
+    /** 좌석 점유·결제 생성 요청용. 대기열 버킷과 별도 키·별도 한도. */
+    public ConsumptionProbe tryConsumePurchase(String scope, String key) {
+        boolean user = RequestScope.SCOPE_USER.equals(scope);
+        return consume(scope, (user ? PURCHASE_KEY_PREFIX_USER : PURCHASE_KEY_PREFIX_IP) + key,
+                user ? rateLimit.getPurchasePerUser() : rateLimit.getPurchasePerIp(), "purchase");
+    }
+
+    /** 로그인·가입 요청용 — 항상 IP 단위(인증 전 요청이므로). */
+    public ConsumptionProbe tryConsumeAuth(String ip) {
+        return consume(RequestScope.SCOPE_IP, AUTH_KEY_PREFIX_IP + ip, rateLimit.getAuthPerIp(), "auth");
+    }
+
+    private ConsumptionProbe consume(String scope, String bucketKey, QueueProperties.Bucket config,
+                                     String group) {
         // Supplier 형 오버로드를 사용 — 8.10 에서 BucketConfiguration 직접 넘기는 시그니처는 @Deprecated.
         // Bucket 이 이미 Redis 에 존재하면 Supplier 는 호출되지 않아 configFor 는 lazy 하게만 실행됨.
         BucketProxy bucket = proxyManager.builder()
-                .build(prefixFor(scope) + key, () -> configFor(scope));
+                .build(bucketKey, () -> configFor(config));
         ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
 
         // 스코프 태그로 허용/차단 각각 카운트. 대시보드에서 IP vs User 분포를 볼 수 있게.
-        Tags tags = Tags.of(Tag.of("scope", scope));
+        Tags tags = Tags.of(Tag.of("scope", scope), Tag.of("group", group));
         String metric = probe.isConsumed() ? "queue.ratelimit.allowed" : "queue.ratelimit.blocked";
         Counter.builder(metric)
-                .description("Queue API rate limit outcome by scope")
+                .description("Rate limit outcome by group (queue|purchase) and scope")
                 .tags(tags)
                 .register(meterRegistry)
                 .increment();
@@ -95,10 +119,7 @@ public class RateLimitService {
      *   상수 시간에 만들 수 있는 로직으로만 유지.
      * </p>
      */
-    private BucketConfiguration configFor(String scope) {
-        QueueProperties.Bucket b = RequestScope.SCOPE_USER.equals(scope)
-                ? rateLimit.getPerUser()
-                : rateLimit.getPerIp();
+    private BucketConfiguration configFor(QueueProperties.Bucket b) {
         Bandwidth limit = Bandwidth.builder()
                 .capacity(b.getCapacity())
                 // refillGreedy: 리필 주기 동안 균등하게 토큰을 채워 넣는다.
@@ -106,9 +127,5 @@ public class RateLimitService {
                 .refillGreedy(b.getCapacity(), b.getRefillPeriod())
                 .build();
         return BucketConfiguration.builder().addLimit(limit).build();
-    }
-
-    private static String prefixFor(String scope) {
-        return RequestScope.SCOPE_USER.equals(scope) ? KEY_PREFIX_USER : KEY_PREFIX_IP;
     }
 }

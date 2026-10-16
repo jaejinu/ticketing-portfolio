@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { LoginForm } from "@/components/auth/LoginForm";
 import { AuthLayout } from "@/components/auth/AuthLayout";
-export const metadata = { title: "로그인 · Ticketing" };
+export const metadata = { title: { absolute: "로그인 · Ticketing" } };
 export default function LoginPage() {
   return (
     <AuthLayout

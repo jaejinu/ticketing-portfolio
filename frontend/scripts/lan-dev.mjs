@@ -38,9 +38,12 @@ function allowed(req) {
 function backendOptions(req) {
   const headers = { ...req.headers, host: 'localhost:8088', origin: 'http://localhost:3002' };
   delete headers.cookie; // Refresh cookies belong exclusively to Next auth routes.
-  delete headers['x-forwarded-host'];
-  delete headers['x-forwarded-proto'];
-  delete headers['x-forwarded-for'];
+  // 방문자 IP 를 주장하는 헤더는 모두 지운다 — 같은 Wi-Fi 기기가 CF-Connecting-IP 등으로 다른 IP 인 척해
+  // IP 단위 요청 제한·잠금을 피할 수 있었다 (QA P3). 백엔드는 이 프록시를 127.0.0.1 로 본다.
+  for (const name of ['x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-for', 'forwarded', 'x-real-ip',
+    'cf-connecting-ip', 'true-client-ip', 'x-client-ip', 'x-proxy-token']) {
+    delete headers[name];
+  }
   return { hostname: '127.0.0.1', port: 8088, method: req.method,
     path: req.url.slice('/__backend'.length), headers };
 }

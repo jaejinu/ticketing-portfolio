@@ -323,9 +323,9 @@ function CurrentPriceBadge({ series }: { series: PricingTick[] }) {
         className={
           'text-xs font-medium ' +
           (delta > 0
-            ? 'text-rose-500'
+            ? 'text-rose-600'
             : delta < 0
-              ? 'text-emerald-500'
+              ? 'text-emerald-700'
               : 'text-[color:var(--color-muted-foreground)]')
         }
       >
@@ -366,9 +366,9 @@ function LatestPriceTable({
                   className={
                     'ml-1 ' +
                     (delta > 0
-                      ? 'text-rose-500'
+                      ? 'text-rose-600'
                       : delta < 0
-                        ? 'text-emerald-500'
+                        ? 'text-emerald-700'
                         : 'text-[color:var(--color-muted-foreground)]')
                   }
                 >

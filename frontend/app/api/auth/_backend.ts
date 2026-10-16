@@ -29,18 +29,42 @@ export const BACKEND_BASE =
  * - cache: 'no-store' (인증 응답은 절대 캐시 금지).
  * - 헤더는 호출자가 추가 가능.
  */
+/**
+ * 인증 프록시가 백엔드에 방문자 IP 를 알릴 때 쓰는 공유 비밀 (서버 전용 env).
+ *
+ * 왜: 이 프록시를 거치면 백엔드에는 모든 방문자가 이 서버(Vercel 출구) IP 로 보인다. IP 단위
+ * 로그인 제한·잠금이 전원에게 함께 걸리지 않도록 방문자 IP 를 X-Client-Ip 로 넘기고, 백엔드는
+ * 이 비밀이 맞을 때만 믿는다. 플랫폼이 x-forwarded-for 를 덮어쓰는 곳(Vercel)에서만 설정한다 —
+ * 그렇지 않은 곳에선 방문자가 그 헤더를 위조할 수 있다.
+ */
+const PROXY_SECRET = process.env.AUTH_PROXY_SECRET ?? '';
+
+/** Vercel 이 채우는 방문자 IP. 없으면 undefined (백엔드는 연결 IP 를 쓴다). */
+export function clientIpOf(req: Request): string | undefined {
+  const real = req.headers.get('x-real-ip')?.trim();
+  if (real) return real;
+  const forwarded = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+  return forwarded || undefined;
+}
+
 export async function callBackend(
   path: string,
   init: {
     method: 'GET' | 'POST' | 'PUT' | 'DELETE';
     json?: unknown;
     headers?: Record<string, string>;
+    /** 방문자 IP — 로그인·가입처럼 IP 단위 제한이 걸리는 호출에만 넘긴다. */
+    clientIp?: string;
   },
 ): Promise<Response> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
     ...init.headers,
   };
+  if (PROXY_SECRET && init.clientIp) {
+    headers['X-Client-Ip'] = init.clientIp;
+    headers['X-Proxy-Token'] = PROXY_SECRET;
+  }
   if (init.json !== undefined) {
     headers['Content-Type'] = 'application/json';
   }

@@ -32,7 +32,7 @@ dependencies {
     // module-auth: AuthPrincipal / @AuthenticatedUser 컨트롤러 인증 컨텍스트.
     implementation(project(":module-auth"))
 
-    implementation(libs.spring.boot.starter.web)
+    implementation(libs.spring.boot.starter.webmvc)
     implementation(libs.spring.boot.starter.validation)
     implementation(libs.spring.boot.starter.data.jpa)
     implementation(libs.spring.boot.starter.data.redis)
@@ -48,7 +48,7 @@ dependencies {
     // jackson-databind 는 spring-boot-starter-web/data-jpa transitive 로 이미 들어옴.
 
     runtimeOnly(libs.postgresql)
-    implementation(libs.flyway.core)
+    implementation(libs.spring.boot.starter.flyway)
     runtimeOnly(libs.flyway.postgresql)
 
     // ---- 테스트 ----------------------------------------------------------------

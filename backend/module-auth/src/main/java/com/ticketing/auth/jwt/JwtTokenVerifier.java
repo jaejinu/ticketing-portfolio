@@ -31,11 +31,20 @@ public class JwtTokenVerifier {
 
     private final JwtKeyManager keyManager;
     private final String issuer;
+    /** null = 무효 표시를 보지 않는다 (키만 쓰는 단위 테스트). */
+    private final AccessTokenRevocation revocation;
 
+    public JwtTokenVerifier(JwtKeyManager keyManager, String issuer) {
+        this(keyManager, issuer, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
     public JwtTokenVerifier(JwtKeyManager keyManager,
-                            @Value("${app.auth.jwt.issuer:ticketing}") String issuer) {
+                            @Value("${app.auth.jwt.issuer:ticketing}") String issuer,
+                            AccessTokenRevocation revocation) {
         this.keyManager = keyManager;
         this.issuer = issuer;
+        this.revocation = revocation;
     }
 
     /**
@@ -50,6 +59,11 @@ public class JwtTokenVerifier {
 
         Claims claims = jws.getPayload();
         UUID userId = UUID.fromString(claims.getSubject());
+        // 역할 변경·강제 로그아웃 이전에 발급된 토큰 — HTTP·STOMP·요청 제한 식별 모두 같은 판정을 쓴다.
+        if (revocation != null && revocation.isRevoked(userId,
+                claims.get(AccessTokenRevocation.ISSUED_AT_MS_CLAIM, Long.class), claims.getIssuedAt())) {
+            throw new JwtException("access token revoked for userId=" + userId);
+        }
         String email = claims.get("email", String.class);
         String name = claims.get("name", String.class);
         @SuppressWarnings("unchecked")

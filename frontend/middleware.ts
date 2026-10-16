@@ -21,6 +21,13 @@
  *    - 쿠키가 있어도 만료/위조됐을 수 있다. 그건 server/client 호출 시점에
  *      한 번 더 검증된다. 여기선 "쿠키가 아예 없으면 100% 비로그인" 만 보장.
  *
+ *  /api/auth/** (2026-10-13 QA 보강):
+ *    - 다른 사이트에서 온 POST 거절 — login/signup 은 쿠키가 없어도 동작하므로 SameSite 로는
+ *      못 막는다. text/plain 폼 POST 로 방문자를 공격자 계정에 로그인시키는 login CSRF 가 가능했다.
+ *      브라우저가 붙이는 Sec-Fetch-Site(없으면 Origin)로 같은 출처인지 본다.
+ *    - login/signup 은 JSON 본문만 받는다 (단순 요청 폼 우회 차단의 두 번째 줄).
+ *    - 토큰이 담긴 응답이 캐시되지 않게 Cache-Control: no-store.
+ *
  *  next=... 쿼리:
  *    - 로그인 후 원래 가려던 곳으로 돌려보내기 위한 힌트. 로그인 페이지가
  *      next 파라미터를 읽어 router.push 한다.
@@ -31,8 +38,45 @@ import { isProtectedPath } from './lib/auth/protectedPath';
 
 const REFRESH_COOKIE_NAME = 'tk_rf';
 
+const JSON_BODY_AUTH_PATHS = new Set(['/api/auth/login', '/api/auth/signup']);
+
+function isSameOriginRequest(req: NextRequest): boolean {
+  const site = req.headers.get('sec-fetch-site');
+  if (site) return site === 'same-origin' || site === 'none';
+  const origin = req.headers.get('origin');
+  // Origin 이 없는 요청은 브라우저 폼/스크립트가 아니다(curl 등) — CSRF 경로가 아니다.
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === req.headers.get('host');
+  } catch {
+    return false;
+  }
+}
+
+function noStore(res: NextResponse): NextResponse {
+  res.headers.set('Cache-Control', 'no-store');
+  return res;
+}
+
+function guardAuthApi(req: NextRequest): NextResponse {
+  if (req.method === 'POST') {
+    if (!isSameOriginRequest(req)) {
+      return noStore(NextResponse.json({ code: 'CROSS_SITE_REQUEST' }, { status: 403 }));
+    }
+    const contentType = (req.headers.get('content-type') ?? '').toLowerCase();
+    if (JSON_BODY_AUTH_PATHS.has(req.nextUrl.pathname) && !contentType.startsWith('application/json')) {
+      return noStore(NextResponse.json({ code: 'UNSUPPORTED_MEDIA_TYPE' }, { status: 415 }));
+    }
+  }
+  return noStore(NextResponse.next());
+}
+
 export function middleware(req: NextRequest): NextResponse {
   const { pathname, search } = req.nextUrl;
+
+  if (pathname.startsWith('/api/auth/')) {
+    return guardAuthApi(req);
+  }
 
   if (!isProtectedPath(pathname)) {
     return NextResponse.next();
@@ -57,6 +101,7 @@ export function middleware(req: NextRequest): NextResponse {
  */
 export const config = {
   matcher: [
+    '/api/auth/:path*',
     '/me/:path*',
     '/checkout/:path*',
     '/organizer/:path*',

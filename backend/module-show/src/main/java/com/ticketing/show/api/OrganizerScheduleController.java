@@ -1,5 +1,7 @@
 package com.ticketing.show.api;
 
+import com.ticketing.auth.audit.AuditRecorder;
+
 import com.ticketing.auth.security.AuthPrincipal;
 import com.ticketing.auth.security.AuthenticatedUser;
 import com.ticketing.show.api.dto.CreateScheduleRequest;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -42,8 +45,11 @@ import java.util.UUID;
 public class OrganizerScheduleController {
 
     private final ScheduleCommandService scheduleCommandService;
+    /** 조직자 상태 변경 기록 — 누가 언제 공개·종료·판매 오픈·가격 변경했는지 (QA P1-5). */
+    private final AuditRecorder audit;
 
-    public OrganizerScheduleController(ScheduleCommandService scheduleCommandService) {
+    public OrganizerScheduleController(ScheduleCommandService scheduleCommandService, AuditRecorder audit) {
+        this.audit = audit;
         this.scheduleCommandService = scheduleCommandService;
     }
 
@@ -62,6 +68,9 @@ public class OrganizerScheduleController {
                                                     @Valid @RequestBody UpdateScheduleRequest req) {
         ShowSchedule schedule = scheduleCommandService.updateSchedule(
                 me.userId(), scheduleId, req.startsAt(), req.endsAt(), req.salesStartAt());
+        audit.record(me.userId(), "SCHEDULE_UPDATED", "SCHEDULE", scheduleId, Map.of(
+                "startsAt", String.valueOf(schedule.getStartsAt()), "endsAt", String.valueOf(schedule.getEndsAt()),
+                "salesStartAt", String.valueOf(schedule.getSalesStartAt())));
         return ResponseEntity.ok(ScheduleResponse.of(schedule));
     }
 
@@ -69,6 +78,7 @@ public class OrganizerScheduleController {
     public ResponseEntity<ScheduleResponse> open(@AuthenticatedUser AuthPrincipal me,
                                                   @PathVariable UUID scheduleId) {
         ShowSchedule schedule = scheduleCommandService.open(me.userId(), scheduleId);
+        audit.record(me.userId(), "SCHEDULE_OPENED", "SCHEDULE", scheduleId, Map.of());
         return ResponseEntity.ok(ScheduleResponse.of(schedule));
     }
 
@@ -76,6 +86,7 @@ public class OrganizerScheduleController {
     public ResponseEntity<ScheduleResponse> close(@AuthenticatedUser AuthPrincipal me,
                                                    @PathVariable UUID scheduleId) {
         ShowSchedule schedule = scheduleCommandService.close(me.userId(), scheduleId);
+        audit.record(me.userId(), "SCHEDULE_CLOSED", "SCHEDULE", scheduleId, Map.of());
         return ResponseEntity.ok(ScheduleResponse.of(schedule));
     }
 }

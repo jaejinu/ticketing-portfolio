@@ -4,6 +4,7 @@ import com.ticketing.auth.security.AuthPrincipal;
 import com.ticketing.auth.security.AuthenticatedUser;
 import com.ticketing.queue.api.dto.EnqueueRequest;
 import com.ticketing.queue.api.dto.QueueStatusResponse;
+import com.ticketing.queue.application.QueueEntryPolicy;
 import com.ticketing.queue.application.QueueStatusSnapshot;
 import com.ticketing.queue.application.VirtualQueueService;
 import jakarta.validation.Valid;
@@ -37,9 +38,11 @@ import java.util.UUID;
 public class QueueController {
 
     private final VirtualQueueService queueService;
+    private final QueueEntryPolicy entryPolicy;
 
-    public QueueController(VirtualQueueService queueService) {
+    public QueueController(VirtualQueueService queueService, QueueEntryPolicy entryPolicy) {
         this.queueService = queueService;
+        this.entryPolicy = entryPolicy;
     }
 
     @PostMapping("/enqueue")
@@ -47,13 +50,15 @@ public class QueueController {
             @AuthenticatedUser AuthPrincipal me,
             @Valid @RequestBody EnqueueRequest req) {
         queueService.requireValidScheduleId(req.scheduleId());
+        entryPolicy.requireOpen(req.scheduleId());
         QueueStatusSnapshot snap = queueService.enqueue(req.scheduleId(), me.userId().toString());
         return ResponseEntity.ok(QueueStatusResponse.of(snap));
     }
 
     @GetMapping("/tickets/{ticket}")
-    public ResponseEntity<QueueStatusResponse> status(@PathVariable UUID ticket) {
-        QueueStatusSnapshot snap = queueService.status(ticket);
+    public ResponseEntity<QueueStatusResponse> status(@AuthenticatedUser AuthPrincipal me,
+                                                      @PathVariable UUID ticket) {
+        QueueStatusSnapshot snap = queueService.status(ticket, me.userId().toString());
         return ResponseEntity.ok(QueueStatusResponse.of(snap));
     }
 }

@@ -3,7 +3,7 @@ package com.ticketing.gateway;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.ActiveProfiles;
@@ -140,7 +140,7 @@ class SmokeIT {
     @Test
     void configurationPropertiesBound() {
         // 각 모듈의 ConfigurationProperties 빈을 type 으로 확인.
-        // Spring Boot 3 의 @EnableConfigurationProperties 빈 이름은 long form (prefix-FQCN) 이라
+        // Spring Boot 의 @EnableConfigurationProperties 빈 이름은 long form (prefix-FQCN) 이라
         // simple name "seatHoldProperties" 로는 못 잡힌다. type lookup 이 안정적.
         assertThat(context.getBeansOfType(
                 com.ticketing.seat.application.SeatHoldProperties.class)).isNotEmpty();

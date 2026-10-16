@@ -2,6 +2,7 @@
 import { use, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { ApiRequestError } from "@/lib/api/client";
 import { getShow, listSections } from "@/lib/api/shows";
 import { listLatestPricing } from "@/lib/api/pricing";
 import {
@@ -24,6 +25,8 @@ export default function ShowDetailPage({
     queryKey: ["show", showId],
     queryFn: () => getShow(showId),
     staleTime: 30_000,
+    // 없는 공연(404)·잘못된 주소(400)는 다시 물어도 같다.
+    retry: (count, error) => !isMissing(error) && count < 2,
   });
   const schedules = [...(showQuery.data?.schedules ?? [])].sort(
     (a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt),
@@ -47,6 +50,22 @@ export default function ShowDetailPage({
     return (
       <div className="hybrid-container page-space" role="status">
         공연을 불러오는 중…
+      </div>
+    );
+  if (isMissing(showQuery.error))
+    return (
+      <div className="hybrid-container page-space">
+        <Notice
+          tone="error"
+          title="공연을 찾을 수 없어요."
+          action={
+            <Link className="underline" href="/shows">
+              공연 목록으로
+            </Link>
+          }
+        >
+          주소가 잘못되었거나 공개가 끝난 공연이에요.
+        </Notice>
       </div>
     );
   if (!showQuery.data)
@@ -206,4 +225,8 @@ export default function ShowDetailPage({
       </section>
     </div>
   );
+}
+
+function isMissing(error: unknown): boolean {
+  return error instanceof ApiRequestError && (error.status === 404 || error.status === 400);
 }

@@ -12,6 +12,8 @@ public class PaymentProperties {
     private Duration reconcileRetry = Duration.ofSeconds(10);
     private int reconcileBatchSize = 20;
     private boolean reconcileEnabled = true;
+    /** 멱등 키 보존 기간 — 지나면 IdempotencyKeyPurger 가 지운다. 점유는 몇 분이면 끝나 7일이면 넉넉하다. */
+    private Duration idempotencyKeyRetention = Duration.ofDays(7);
 
     public String getMockPgBaseUrl() { return mockPgBaseUrl; }
     public void setMockPgBaseUrl(String value) { mockPgBaseUrl = value; }
@@ -25,4 +27,6 @@ public class PaymentProperties {
     public void setReconcileBatchSize(int value) { reconcileBatchSize = value; }
     public boolean isReconcileEnabled() { return reconcileEnabled; }
     public void setReconcileEnabled(boolean value) { reconcileEnabled = value; }
+    public Duration getIdempotencyKeyRetention() { return idempotencyKeyRetention; }
+    public void setIdempotencyKeyRetention(Duration value) { idempotencyKeyRetention = value; }
 }

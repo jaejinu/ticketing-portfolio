@@ -11,6 +11,7 @@ import com.ticketing.seat.domain.SeatHold;
 import com.ticketing.seat.domain.SeatHoldRepository;
 import com.ticketing.seat.lock.RedissonSeatLockManager;
 import com.ticketing.show.domain.Seat;
+import com.ticketing.show.domain.ShowScheduleStatus;
 import com.ticketing.show.domain.SeatRepository;
 import com.ticketing.show.domain.Section;
 import com.ticketing.show.domain.SectionGrade;
@@ -98,8 +99,9 @@ class HoldPriceSnapshotIntegrationTest extends PricingIntegrationTestBase {
         showRepository.save(show);
 
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-        ShowSchedule schedule = ShowSchedule.create(show.getId(),
-                now.plusDays(7), now.plusDays(7).plusHours(2), now.plusDays(3));
+        // 점유는 판매 중(ON_SALE, 판매 시작 경과) 회차에서만 허용된다.
+        ShowSchedule schedule = ShowSchedule.createWithId(UUID.randomUUID(), show.getId(),
+                now.plusDays(7), now.plusDays(7).plusHours(2), now.minusDays(1), ShowScheduleStatus.ON_SALE);
         scheduleRepository.save(schedule);
         this.scheduleId = schedule.getId();
 

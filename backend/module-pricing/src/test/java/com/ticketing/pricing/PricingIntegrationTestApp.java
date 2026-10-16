@@ -1,6 +1,7 @@
 package com.ticketing.pricing;
 
 import com.ticketing.common.time.AppClock;
+import com.ticketing.common.web.ApiErrorAdvice;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.springframework.boot.SpringBootConfiguration;
@@ -48,7 +49,7 @@ import org.springframework.context.annotation.Import;
                 type = FilterType.REGEX,
                 pattern = "com\\.ticketing\\.pricing\\.streams\\..*")
 )
-@Import(AppClock.class)
+@Import({AppClock.class, ApiErrorAdvice.class})
 public class PricingIntegrationTestApp {
 
     @Bean
@@ -82,9 +83,9 @@ public class PricingIntegrationTestApp {
     public com.ticketing.pricing.streams.DemandSignalReader testDemandSignalReader() {
         return new com.ticketing.pricing.streams.DemandSignalReader(null) {
             @Override
-            public long readRecentDemand(java.util.UUID scheduleId, java.util.UUID sectionId,
+            public java.util.OptionalLong readRecentDemand(java.util.UUID scheduleId, java.util.UUID sectionId,
                                          java.time.Duration lookback) {
-                return 0L;
+                return java.util.OptionalLong.empty();
             }
         };
     }

@@ -23,10 +23,12 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+      # gradlew·gradle-wrapper.jar 가 공식 배포본과 같은지 — 바꿔치기된 래퍼는 CI 에서 임의 코드를 돌린다.
+      - uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
       - name: Build and test backend (isolated Testcontainers)
         working-directory: backend
         run: ./gradlew --no-daemon test :app-gateway:bootJar -I dependency-audit.init.gradle exportAuditDependencies

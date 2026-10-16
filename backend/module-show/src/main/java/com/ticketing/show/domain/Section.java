@@ -77,10 +77,7 @@ public class Section {
     }
 
     public static Section create(UUID showScheduleId, String name, SectionGrade grade, long basePrice) {
-        if (basePrice <= 0) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST,
-                    "base_price 는 양수여야 합니다. 입력=" + basePrice);
-        }
+        requireValidBasePrice(basePrice);
         return new Section(UUID.randomUUID(), showScheduleId, name, grade, basePrice);
     }
 
@@ -111,18 +108,29 @@ public class Section {
      * @param now                현재 시각
      * @throws BusinessException 판매 오픈 이후이거나 가격이 양수가 아닐 때
      */
-    public void changeBasePrice(long newPrice, OffsetDateTime salesStartAt, OffsetDateTime now) {
-        if (newPrice <= 0) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST,
-                    "base_price 는 양수여야 합니다. 입력=" + newPrice);
-        }
-        if (salesStartAt != null && now != null && !now.isBefore(salesStartAt)) {
-            // 판매 오픈 이후 — 다이나믹 프라이싱 기준값 잠금.
+    public void changeBasePrice(long newPrice, ShowSchedule schedule, OffsetDateTime now) {
+        requireValidBasePrice(newPrice);
+        if (schedule.isSalesLocked(now)) {
+            // 판매 오픈 이후(상태 또는 시각) — 다이나믹 프라이싱 기준값 잠금.
             // SCHEDULE_BASE_PRICE_LOCKED → 409 Conflict 로 매핑.
             throw new BusinessException(ErrorCode.SCHEDULE_BASE_PRICE_LOCKED,
-                    "판매 오픈 이후엔 base_price 를 변경할 수 없습니다. salesStartAt=" + salesStartAt);
+                    "판매 오픈 이후엔 base_price 를 변경할 수 없습니다. status=" + schedule.getStatus()
+                            + ", salesStartAt=" + schedule.getSalesStartAt());
         }
         this.basePrice = newPrice;
+    }
+
+    /**
+     * 기준가 상한 1억 원. 예전엔 Long 최대값을 받아 가격 계산이 매초 넘침으로 실패해
+     * 그 회차의 모든 구역 가격 갱신이 멈췄다 (2026-10-13 QA).
+     */
+    public static final long MAX_BASE_PRICE = 100_000_000L;
+
+    static void requireValidBasePrice(long price) {
+        if (price <= 0 || price > MAX_BASE_PRICE) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST,
+                    "base_price 는 1 ~ " + MAX_BASE_PRICE + " 원이어야 합니다. 입력=" + price);
+        }
     }
 
     public void renameTo(String newName, SectionGrade newGrade) {

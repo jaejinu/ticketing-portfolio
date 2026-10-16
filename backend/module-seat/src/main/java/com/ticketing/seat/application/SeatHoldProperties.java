@@ -20,6 +20,8 @@ import java.time.Duration;
  *         ttl: PT5M           # 5분
  *         lock-wait: PT0.2S   # 200ms
  *         max-seats: 4
+ *         max-seats-per-user: 4
+ *         require-queue-admission: true
  * </pre>
  */
 @ConfigurationProperties(prefix = "app.seat.hold")
@@ -44,6 +46,18 @@ public class SeatHoldProperties {
     private int maxSeats = 4;
 
     /**
+     * 한 사용자가 한 회차에서 가질 수 있는 좌석 합계 (살아 있는 점유 + 구매).
+     * 요청 단위 {@link #maxSeats} 만으로는 여러 번 나눠 요청해 공연장을 통째로 잡을 수 있어 별도로 둔다.
+     */
+    private int maxSeatsPerUser = 4;
+
+    /**
+     * 점유 전에 대기열 입장(ADMITTED) 을 요구할지.
+     * 운영은 항상 true. 대기열 모듈 없이 뜨는 단독 통합 테스트에서만 false 로 둔다.
+     */
+    private boolean requireQueueAdmission = true;
+
+    /**
      * 만료 스케줄러 정책 그룹.
      *
      * <p>
@@ -60,6 +74,12 @@ public class SeatHoldProperties {
 
     public int getMaxSeats() { return maxSeats; }
     public void setMaxSeats(int maxSeats) { this.maxSeats = maxSeats; }
+
+    public int getMaxSeatsPerUser() { return maxSeatsPerUser; }
+    public void setMaxSeatsPerUser(int maxSeatsPerUser) { this.maxSeatsPerUser = maxSeatsPerUser; }
+
+    public boolean isRequireQueueAdmission() { return requireQueueAdmission; }
+    public void setRequireQueueAdmission(boolean requireQueueAdmission) { this.requireQueueAdmission = requireQueueAdmission; }
 
     public Expiry getExpiry() { return expiry; }
 
