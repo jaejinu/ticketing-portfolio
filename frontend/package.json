@@ -17,26 +17,26 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@hookform/resolvers": "^5.9.1",
-    "@stomp/stompjs": "^7.3.0",
-    "@tanstack/react-query": "^5.104.1",
-    "@tanstack/react-query-devtools": "^5.104.1",
+    "@hookform/resolvers": "^5.9.2",
+    "@stomp/stompjs": "^7.5.0",
+    "@tanstack/react-query": "^5.104.5",
+    "@tanstack/react-query-devtools": "^5.104.5",
     "clsx": "^2.1.1",
-    "next": "16.4.0",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
-    "react-hook-form": "^7.89.0",
+    "next": "16.4.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-hook-form": "^7.90.0",
     "tailwind-merge": "^2.6.1",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@playwright/test": "^1.64.0",
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/postcss": "^4.3.3",
-    "@types/node": "^22.19.18",
+    "@types/node": "^22.20.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "eslint": "^9.39.4",
-    "eslint-config-next": "16.4.0",
+    "eslint-config-next": "16.4.2",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3"
   },
