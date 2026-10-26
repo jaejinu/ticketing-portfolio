@@ -68,7 +68,7 @@ subprojects {
     }
 
     the<io.spring.gradle.dependencymanagement.dsl.DependencyManagementExtension>().dependencies {
-        dependency("at.yawk.lz4:lz4-java:1.12.0")
+        dependency("at.yawk.lz4:lz4-java:1.12.1")
     }
 
     // 공통 저장소는 settings.gradle.kts 에 중앙 집중되어 있으므로 여기엔 적지 않는다.
