@@ -12,7 +12,7 @@
 # =============================================================================
 
 # Java 21 LTS (2026-10-14 에 17 에서 올림). 다이제스트 고정 — 태그가 움직여도 같은 이미지.
-FROM eclipse-temurin:21-jre@sha256:dc9cf8ce05fab93643ec058491c3f0ab3cf65de8e11e7a8a999570364399f4a3
+FROM eclipse-temurin:21-jre@sha256:227118764cccd3c3294617061aaa93a08309c63a395eefa83e6b35032992ea99
 
 WORKDIR /app
 
