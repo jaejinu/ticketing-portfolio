@@ -24,7 +24,7 @@ jobs:
         with:
           persist-credentials: false
       # gradlew·gradle-wrapper.jar 가 공식 배포본과 같은지 — 바꿔치기된 래퍼는 CI 에서 임의 코드를 돌린다.
-      - uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - uses: gradle/actions/wrapper-validation@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
@@ -36,7 +36,7 @@ jobs:
         run: python3 scripts/audit-backend.py
       - name: Upload test results
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: backend-security-tests
           path: |
