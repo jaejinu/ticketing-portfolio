@@ -16,17 +16,17 @@
 
 [versions]
 java                    = "21"
-spring-boot             = "4.1.1"
+spring-boot             = "4.1.2"
 spring-dependency-mgmt  = "1.1.7"
 spring-cloud            = "2025.1.3"
 redisson                = "4.8.0"
 testcontainers          = "2.0.5"
 jjwt                    = "0.13.0"
-otel-spring-starter     = "2.32.0"
+otel-spring-starter     = "2.33.1"
 lombok                  = "1.18.48"
 bucket4j                = "8.10.1"
 shedlock                = "7.10.1"        # 스케줄러 분산 락 (leader election 대용 — ADR-0004 갱신 참고)
-jackson-databind-nullable = "0.2.12"        # OpenAPI 생성기/널 표현 호환
+jackson-databind-nullable = "0.2.13"        # OpenAPI 생성기/널 표현 호환
 mapstruct               = "1.6.3"
 
 [libraries]
@@ -72,7 +72,7 @@ micrometer-tracing-bridge-otel      = { module = "io.micrometer:micrometer-traci
 micrometer-registry-otlp            = { module = "io.micrometer:micrometer-registry-otlp" }
 opentelemetry-spring-starter        = { module = "io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter", version.ref = "otel-spring-starter" }
 # 로그 → OTLP (OtlpLogExportConfig). 스타터가 이미 런타임으로 끌어오는 것과 같은 버전(-alpha).
-opentelemetry-logback-appender      = { module = "io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0", version = "2.32.0-alpha" }
+opentelemetry-logback-appender      = { module = "io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0", version = "2.33.1-alpha" }
 
 # --- Lombok / Mapstruct ------------------------------------------------------
 lombok                              = { module = "org.projectlombok:lombok",              version.ref = "lombok" }
